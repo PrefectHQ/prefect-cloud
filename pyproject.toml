@@ -1,0 +1,24 @@
+[project]
+name = "prefect-cloud"
+version = "0.1.0"
+description = "Package for deploying on Prefect Cloud"
+readme = "README.md"
+authors = [
+    { name = "Prefect Technologies, Inc.", email = "help@prefect.io"}
+]
+requires-python = ">=3.12"
+dependencies = [
+    "prefect>=3.1.14",
+    "pydantic-settings>=2.7.1",
+    "pydantic>=2.10.6",
+    "rich>=13.9.4",
+    "typer>=0.13.1",
+    "typing-extensions>=4.12.2",
+]
+
+[project.scripts]
+prefect-cloud = "prefect_cloud:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
