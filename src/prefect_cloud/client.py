@@ -16,6 +16,15 @@ from prefect_cloud.settings import settings
 
 PREFECT_MANAGED = "prefect:managed"
 
+#TODO: temporary remove
+def get_cloud_api_url():
+    url = PREFECT_API_URL.value()
+    if url.startswith("https://api.prefect.dev/api"):
+        return "https://api.prefect.dev/api"
+    elif url.startswith("https://api.stg.prefect.dev/api"):
+        return "https://api.stg.prefect.dev/api"
+    else:
+        return "https://api.prefect.cloud/api"
 
 
 class PrefectCloudClient(PrefectClient):
