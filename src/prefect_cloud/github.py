@@ -90,7 +90,6 @@ class GitHubFileRef:
 
 async def get_github_raw_content(github_ref: GitHubFileRef) -> str:
     """Get raw content of a file from GitHub."""
-
     async with AsyncClient() as client:
         response = await client.get(github_ref.raw_url)
         if response.status_code == 404:

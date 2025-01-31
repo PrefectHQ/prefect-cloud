@@ -40,18 +40,25 @@ def process_key_value_pairs(env: list[str]) -> dict[str, str]:
 
 
 @app.command()
-async def git_deploy(
-    filename: str,
-    flow_func: str,
+async def deploy(
+    function: str,
+    file: Annotated[
+        str,
+        typer.Option(
+            "--from",
+            "-f",
+            help=".py file containing the function to deploy.",
+        ),
+    ],
     dependencies: Annotated[
         list[str],
         typer.Option(
-            "--dependencies",
+            "--with",
             "-d",
-            help="Dependencies to include. Can be a string (`package`), "
-            "a comma separated string (`package1, package2`), "
-            "a path to a requirements file, or a path to a pyproject.toml file."
-            "Can be specified multiple times.",
+            help="Dependencies to include. Can be a single package `--with prefect`, "
+                "multiple packages `--with prefect --with pandas`, "
+                "the path to a requirements or pyproject.toml file "
+                 "`--with requirements.txt / pyproject.toml`."
         ),
     ] = None,
     env: Annotated[
@@ -78,36 +85,32 @@ async def git_deploy(
         async with get_prefect_cloud_client() as client:
             task = progress.add_task("Inspecting code in github..", total=None)
 
-            github_ref = GitHubFileRef.from_url(filename)
+            github_ref = GitHubFileRef.from_url(file)
             raw_contents = await get_github_raw_content(github_ref)
             try:
                 parameter_schema = get_parameter_schema_from_content(
-                    raw_contents, flow_func
+                    raw_contents, function
                 )
             except ValueError:
                 exit_with_error(
-                    f"Could not find function '{flow_func}' in {github_ref.filepath}"
+                    f"Could not find function '{function}' in {github_ref.filepath}"
                 )
 
             progress.update(task, description="Ensuring work pool exists...")
             work_pool = await client.ensure_managed_work_pool()
 
             progress.update(task, description="Deploying flow...")
-            deployment_name = f"{flow_func}_deployment"
+            deployment_name = f"{function}_deployment"
 
             pull_steps = [
                 github_ref.pull_step,
-                {
-                    "prefect.deployments.steps.run_shell_script": {
-                        "script": f"uv run https://raw.githubusercontent.com/PrefectHQ/prefect-cloud/refs/heads/main/src/prefect_cloud/pull_steps/flowify.py {github_ref.repo}-{github_ref.branch}/{github_ref.filepath} {flow_func}"
-                    }
-                },
+                # TODO: put back flowify if this a public repo? need to figure that out.
             ]
 
             deployment_id = await client.create_managed_deployment(
                 deployment_name,
                 github_ref.filepath,
-                flow_func,
+                function,
                 work_pool,
                 pull_steps,
                 parameter_schema,
@@ -126,112 +129,14 @@ async def git_deploy(
     )
 
     app.console.print(
-        f"Run it with: \n $ prefect deployment run {flow_func}/{deployment_name}",
+        f"Run it with: \n $ prefect deployment run {function}/{deployment_name}",
         style="blue",
     )
-
 
 @app.command()
-async def deploy(
-    filename: str,
-    flow_func: str,
-    dependencies: Annotated[
-        list[str],
-        typer.Option(
-            "--dependencies",
-            "-d",
-            help="Dependencies to include. Can be a string (`package`), "
-            "a comma separated string (`package1, package2`), "
-            "a path to a requirements file, or a path to a pyproject.toml file."
-            "Can be specified multiple times.",
-        ),
-    ] = None,
-    include: Annotated[
-        list[str],
-        typer.Option(
-            "--include",
-            "-i",
-            help="Files or directories to include in the deployment. Can be specified multiple times.",
-        ),
-    ] = None,
-    env: Annotated[
-        list[str],
-        typer.Option(
-            "--env",
-            "-e",
-            help="Environment variables to set in the format KEY=VALUE. Can be specified multiple times.",
-        ),
-    ] = None,
-):
-    ensure_prefect_cloud()
+async def schedule():
+    raise NotImplementedError
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[blue]{task.description}"),
-        transient=True,
-    ) as progress:
-        try:
-            env_vars = process_key_value_pairs(env) if env else {}
-        except ValueError as e:
-            exit_with_error(str(e))
-
-        async with get_prefect_cloud_client() as client:
-            task = progress.add_task("Prefect-ifying your workflow...", total=None)
-
-            raw_contents = Path(filename).read_text()
-            try:
-                parameter_schema = get_parameter_schema_from_content(
-                    raw_contents, flow_func
-                )
-            except ValueError:
-                exit_with_error(f"Could not find function '{flow_func}' in {filename}")
-
-            progress.update(task, description="Uploading code to storage...")
-
-            storage_id = await client.create_code_storage()
-
-            code_bundle = package_files(filename, flow_func, include)
-            await client.upload_code_to_storage(storage_id, code_bundle)
-
-            progress.update(task, description="Ensuring work pool exists...")
-            work_pool = await client.ensure_managed_work_pool()
-
-            progress.update(task, description="Deploying flow...")
-            deployment_name = f"{flow_func}_deployment"
-            deployment_id = await client.create_managed_deployment(
-                deployment_name,
-                filename,
-                flow_func,
-                work_pool,
-                pull_steps=[
-                    {
-                        "prefect.deployments.steps.run_shell_script": {
-                            "script": f"uv run https://raw.githubusercontent.com/PrefectHQ/prefect-cloud/refs/heads/main/src/prefect_cloud/pull_steps/retrieve_code.py {storage_id}"
-                        }
-                    },
-                    {
-                        "prefect.deployments.steps.run_shell_script": {
-                            "script": f"uv run https://raw.githubusercontent.com/PrefectHQ/prefect-cloud/refs/heads/main/src/prefect_cloud/pull_steps/flowify.py {filename} {flow_func}"
-                        }
-                    },
-                ],
-                parameter_schema=parameter_schema,
-                job_variables={
-                    "pip_packages": get_dependencies(dependencies or []),
-                    "env": {"PREFECT_CLOUD_API_URL": get_cloud_api_url()} | env_vars,
-                },
-            )
-            await client.set_deployment_id(storage_id, deployment_id)
-
-    app.console.print(
-        f"View deployment here: "
-        f"\n ➜ [link={url_for('deployment', deployment_id)}]"
-        f"{deployment_name}"
-        f"[/link]",
-        style="blue",
-    )
-
-    app.console.print(
-        f"Run it with: \n $ prefect deployment run {flow_func}/{deployment_name}",
-        style="blue",
-    )
+@app.command()
+async def init():
+    raise NotImplementedError

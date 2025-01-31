@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-prefect-cloud = "prefect_cloud:main"
+prefect-cloud = "prefect_cloud:cli.app"
 
 [build-system]
 requires = ["hatchling"]

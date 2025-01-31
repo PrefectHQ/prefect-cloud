@@ -3,7 +3,7 @@ import json
 import zlib
 from pathlib import Path
 
-from prefectx.ast_utils import add_flow_decorator
+from prefect_cloud.utilities.flows import add_flow_decorator
 
 
 def package_files(
