@@ -16,6 +16,11 @@ dependencies = [
     "typing-extensions>=4.12.2",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=3.5.0",
+]
+ 
 [project.scripts]
 prefect-cloud = "prefect_cloud:cli.app"
 
