@@ -54,18 +54,6 @@ class PrefectCloudClient(PrefectClient):
 
         return work_pool.name
 
-    @staticmethod
-    def create_pull_steps(
-        storage_id: UUID,
-    ) -> list[dict[str, Any]]:
-        return [
-            {
-                "prefect.deployments.steps.run_shell_script": {
-                    "script": f"uv run https://raw.githubusercontent.com/jakekaplan/prefectx/refs/heads/main/src/prefectx/pull_steps/retrieve_code.py {storage_id}"
-                }
-            }
-        ]
-
     async def create_managed_deployment(
         self,
         deployment_name: str,
@@ -90,29 +78,6 @@ class PrefectCloudClient(PrefectClient):
 
         return deployment_id
 
-    async def create_code_storage(self) -> UUID:
-        response = await self._client.post(
-            f"/mex/storage/",
-            json={"hash": str(uuid4()), "labels": {}},
-        )
-        return UUID(response.json()["id"])
-
-    async def upload_code_to_storage(self, storage_id, contents: str):
-        await self._client.post(
-            f"/mex/storage/upload",
-            data={"mex_storage_id": str(storage_id)},
-            files={"file": ("code", contents)},
-        )
-
-    async def download_code_from_storage(self, storage_id: UUID) -> dict[str, str]:
-        response = await self._client.get(f"/mex/storage/{storage_id}")
-        return response.json()["data"]
-
-    async def set_deployment_id(self, storage_id: UUID, deployment_id: UUID):
-        await self._client.patch(
-            f"/mex/storage/set-deployment-id/{storage_id}",
-            json={"deployment_id": str(deployment_id)},
-        )
 
 
 def get_prefect_cloud_client():

@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import typer
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from typing_extensions import Annotated
@@ -9,7 +7,6 @@ from prefect.cli.root import PrefectTyper
 from prefect.client.base import ServerType, determine_server_type
 from prefect.utilities.urls import url_for
 
-from prefect_cloud.bundle import package_files
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import GitHubFileRef, get_github_raw_content
 from prefect_cloud.client import (
