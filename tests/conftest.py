@@ -1,6 +1,7 @@
 import pytest
 from pytest_asyncio import is_async_test
 
+
 def pytest_collection_modifyitems(items: list[pytest.Item]):
     # Ensure that all async tests are run with the session loop scope
     pytest_asyncio_tests = [item for item in items if is_async_test(item)]
