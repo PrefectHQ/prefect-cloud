@@ -2,7 +2,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from prefect.client.orchestration import PrefectClient
-from prefect.client.schemas.actions import WorkPoolCreate
+from prefect.exceptions import ObjectNotFound
+from prefect.client.schemas.actions import (
+    BlockDocumentCreate,
+    BlockDocumentUpdate,
+    WorkPoolCreate,
+)
 from prefect.client.schemas.filters import WorkPoolFilter, WorkPoolFilterType
 from prefect.settings import (
     PREFECT_API_KEY,
@@ -114,6 +119,37 @@ class PrefectCloudClient(PrefectClient):
             f"/mex/storage/set-deployment-id/{storage_id}",
             json={"deployment_id": str(deployment_id)},
         )
+
+    async def create_credentials_secret(self, name: str, credentials: str):
+        try:
+            existing_block = await self.read_block_document_by_name(
+                name, block_type_slug="secret"
+            )
+            await self.update_block_document(
+                block_document_id=existing_block.id,
+                block_document=BlockDocumentUpdate(
+                    data={
+                        "value": credentials,
+                    },
+                ),
+            )
+        except ObjectNotFound:
+            secret_block_type = await self.read_block_type_by_slug("secret")
+            secret_block_schema = (
+                await self.get_most_recent_block_schema_for_block_type(
+                    block_type_id=secret_block_type.id
+                )
+            )
+            await self.create_block_document(
+                block_document=BlockDocumentCreate(
+                    name=name,
+                    data={
+                        "value": credentials,
+                    },
+                    block_type_id=secret_block_type.id,
+                    block_schema_id=secret_block_schema.id,
+                )
+            )
 
 
 def get_prefect_cloud_client():
