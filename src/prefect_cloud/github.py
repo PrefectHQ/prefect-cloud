@@ -9,6 +9,7 @@ from httpx import AsyncClient
 class FileNotFound(Exception):
     pass
 
+
 @dataclass
 class GitHubFileRef:
     """Reference to a file in a GitHub repository."""
@@ -80,18 +81,25 @@ class GitHubFileRef:
     def __str__(self) -> str:
         return f"github.com/{self.owner}/{self.repo} @ {self.branch} - {self.filepath}"
 
-def to_pull_step(github_ref: GitHubFileRef, credentials_block: str | None = None) -> dict[str, Any]:
+
+def to_pull_step(
+    github_ref: GitHubFileRef, credentials_block: str | None = None
+) -> dict[str, Any]:
     pull_step_kwargs = {
         "repository": github_ref.clone_url,
         "branch": github_ref.branch,
     }
     if credentials_block:
-        pull_step_kwargs["access_token"] = "{{ prefect.blocks.secret." + credentials_block + " }}"
+        pull_step_kwargs["access_token"] = (
+            "{{ prefect.blocks.secret." + credentials_block + " }}"
+        )
 
     return {"prefect.deployments.steps.git_clone": pull_step_kwargs}
 
 
-async def get_github_raw_content(github_ref: GitHubFileRef, credentials: str | None = None) -> str:
+async def get_github_raw_content(
+    github_ref: GitHubFileRef, credentials: str | None = None
+) -> str:
     """Get raw content of a file from GitHub."""
     headers = {}
     if credentials:
