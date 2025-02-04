@@ -9,6 +9,7 @@ from prefect.utilities.callables import (
     parameter_docstrings,
 )
 
+
 def get_parameter_schema_from_content(
     content: str, function_name: str
 ) -> ParameterSchema:

@@ -14,7 +14,9 @@ dependencies = [
     "rich>=13.9.4",
     "typer>=0.13.1",
     "typing-extensions>=4.12.2",
+    "uv>=0.5.26",
 ]
+
 
 [project.scripts]
 prefect-cloud = "prefect_cloud:cli.app"
@@ -25,6 +27,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.1.0",
     "pytest-asyncio>=0.25.3",
     "pytest>=8.3.4",
 ]

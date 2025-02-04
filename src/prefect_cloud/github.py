@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 from httpx import AsyncClient
@@ -48,7 +48,7 @@ class GitHubFileRef:
             )
 
         owner, repo = parts[:2]
-        ref_type = parts[2]
+        ref_type = cast(Literal["blob", "tree"], parts[2])
 
         if ref_type not in ("blob", "tree"):
             raise ValueError(
