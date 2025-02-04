@@ -7,7 +7,12 @@ from prefect.client.base import ServerType, determine_server_type
 from prefect.utilities.urls import url_for
 
 from prefect_cloud.dependencies import get_dependencies
-from prefect_cloud.github import GitHubFileRef, get_github_raw_content, FileNotFound, to_pull_step
+from prefect_cloud.github import (
+    GitHubFileRef,
+    get_github_raw_content,
+    FileNotFound,
+    to_pull_step,
+)
 from prefect_cloud.client import (
     get_cloud_api_url,
     get_prefect_cloud_client,
@@ -21,6 +26,7 @@ def exit_with_error(message: str, progress: Progress = None):
     if progress:
         progress.stop()
     _exit_with_error(message)
+
 
 def ensure_prefect_cloud():
     if determine_server_type() != ServerType.CLOUD:
@@ -44,29 +50,33 @@ def process_key_value_pairs(env: list[str]) -> dict[str, str]:
 async def deploy(
     function: str,
     file: str = typer.Option(
-        None,
+        ...,
         "--from",
         "-f",
         help=".py file containing the function to deploy.",
     ),
     dependencies: list[str] = typer.Option(
+        ...,
         "--with",
         "-d",
         help="Dependencies to include. Can be a single package `--with prefect`, "
         "multiple packages `--with prefect --with pandas`, "
         "the path to a requirements or pyproject.toml file "
         "`--with requirements.txt / pyproject.toml`.",
+        default_factory=list,
     ),
     env: list[str] = typer.Option(
+        ...,
         "--env",
         "-e",
         help="Environment variables to set in the format KEY=VALUE. Can be specified multiple times.",
+        default_factory=list,
     ),
-    credentials: str = typer.Option(
+    credentials: str | None = typer.Option(
         None,
         "--credentials",
         "-c",
-        help="Optional credentials if code is in a private repository. "
+        help="Optional credentials if code is in a private repository. ",
     ),
 ):
     ensure_prefect_cloud()
@@ -90,8 +100,8 @@ async def deploy(
             except FileNotFound:
                 exit_with_error(
                     "Can't access that file in Github. It either doesn't exist or is private. "
-                    "If it's private retry with `--credentials`.",
-                    progress = progress,
+                    "If it's private repo retry with `--credentials`.",
+                    progress=progress,
                 )
             try:
                 parameter_schema = get_parameter_schema_from_content(
@@ -113,9 +123,7 @@ async def deploy(
             if credentials:
                 progress.update(task, description="Syncing credentials...")
                 credentials_name = f"{github_ref.owner}-{github_ref.repo}-credentials"
-                await client.create_credentials_secret(
-                    credentials_name, credentials
-                )
+                await client.create_credentials_secret(credentials_name, credentials)
 
             pull_steps = [
                 to_pull_step(github_ref, credentials_name)
