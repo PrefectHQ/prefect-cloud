@@ -16,7 +16,8 @@ from prefect_cloud.settings import settings
 
 PREFECT_MANAGED = "prefect:managed"
 
-#TODO: temporary remove
+
+# TODO: temporary remove
 def get_cloud_api_url():
     url = PREFECT_API_URL.value()
     if url.startswith("https://api.prefect.dev/api"):
@@ -92,14 +93,14 @@ class PrefectCloudClient(PrefectClient):
 
     async def create_code_storage(self) -> UUID:
         response = await self._client.post(
-            f"/mex/storage/",
+            "/mex/storage/",
             json={"hash": str(uuid4()), "labels": {}},
         )
         return UUID(response.json()["id"])
 
     async def upload_code_to_storage(self, storage_id, contents: str):
         await self._client.post(
-            f"/mex/storage/upload",
+            "/mex/storage/upload",
             data={"mex_storage_id": str(storage_id)},
             files={"file": ("code", contents)},
         )

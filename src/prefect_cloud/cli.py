@@ -1,15 +1,11 @@
-from pathlib import Path
-
 import typer
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from typing_extensions import Annotated
 
 from prefect.cli._utilities import exit_with_error
 from prefect.cli.root import PrefectTyper
 from prefect.client.base import ServerType, determine_server_type
 from prefect.utilities.urls import url_for
 
-from prefect_cloud.bundle import package_files
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import GitHubFileRef, get_github_raw_content
 from prefect_cloud.client import (
@@ -42,33 +38,25 @@ def process_key_value_pairs(env: list[str]) -> dict[str, str]:
 @app.command()
 async def deploy(
     function: str,
-    file: Annotated[
-        str,
-        typer.Option(
-            "--from",
-            "-f",
-            help=".py file containing the function to deploy.",
-        ),
-    ],
-    dependencies: Annotated[
-        list[str],
-        typer.Option(
-            "--with",
-            "-d",
-            help="Dependencies to include. Can be a single package `--with prefect`, "
-                "multiple packages `--with prefect --with pandas`, "
-                "the path to a requirements or pyproject.toml file "
-                 "`--with requirements.txt / pyproject.toml`."
-        ),
-    ] = None,
-    env: Annotated[
-        list[str],
-        typer.Option(
-            "--env",
-            "-e",
-            help="Environment variables to set in the format KEY=VALUE. Can be specified multiple times.",
-        ),
-    ] = None,
+    file: str = typer.Option(
+        None,
+        "--from",
+        "-f",
+        help=".py file containing the function to deploy.",
+    ),
+    dependencies: list[str] = typer.Option(
+        "--with",
+        "-d",
+        help="Dependencies to include. Can be a single package `--with prefect`, "
+        "multiple packages `--with prefect --with pandas`, "
+        "the path to a requirements or pyproject.toml file "
+        "`--with requirements.txt / pyproject.toml`.",
+    ),
+    env: list[str] = typer.Option(
+        "--env",
+        "-e",
+        help="Environment variables to set in the format KEY=VALUE. Can be specified multiple times.",
+    ),
 ):
     ensure_prefect_cloud()
 
@@ -133,9 +121,11 @@ async def deploy(
         style="blue",
     )
 
+
 @app.command()
 async def schedule():
     raise NotImplementedError
+
 
 @app.command()
 async def init():
