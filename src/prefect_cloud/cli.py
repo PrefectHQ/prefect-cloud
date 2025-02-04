@@ -4,14 +4,14 @@ import typer
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from typing_extensions import Annotated
 
-from prefect.cli._utilities import exit_with_error
+from prefect.cli._utilities import exit_with_error as _exit_with_error
 from prefect.cli.root import PrefectTyper
 from prefect.client.base import ServerType, determine_server_type
 from prefect.utilities.urls import url_for
 
 from prefect_cloud.bundle import package_files
 from prefect_cloud.dependencies import get_dependencies
-from prefect_cloud.github import GitHubFileRef, get_github_raw_content
+from prefect_cloud.github import GitHubFileRef, get_github_raw_content, FileNotFound, to_pull_step
 from prefect_cloud.client import (
     get_cloud_api_url,
     get_prefect_cloud_client,
@@ -20,6 +20,11 @@ from prefect_cloud.utilities.flows import get_parameter_schema_from_content
 
 app = PrefectTyper()
 
+
+def exit_with_error(message: str, progress: Progress = None):
+    if progress:
+        progress.stop()
+    _exit_with_error(message)
 
 def ensure_prefect_cloud():
     if determine_server_type() != ServerType.CLOUD:
@@ -69,6 +74,12 @@ async def deploy(
             help="Environment variables to set in the format KEY=VALUE. Can be specified multiple times.",
         ),
     ] = None,
+    credentials: str = typer.Option(
+        None,
+        "--credentials",
+        "-c",
+        help="Optional credentials if code is in a private repository. "
+    ),
 ):
     ensure_prefect_cloud()
 
@@ -76,34 +87,51 @@ async def deploy(
         SpinnerColumn(),
         TextColumn("[blue]{task.description}"),
         transient=True,
+        auto_refresh=True,
     ) as progress:
         try:
             env_vars = process_key_value_pairs(env) if env else {}
         except ValueError as e:
-            exit_with_error(str(e))
+            exit_with_error(str(e), progress=progress)
 
         async with get_prefect_cloud_client() as client:
-            task = progress.add_task("Inspecting code in github..", total=None)
+            task = progress.add_task("Inspecting code...", total=None)
 
             github_ref = GitHubFileRef.from_url(file)
-            raw_contents = await get_github_raw_content(github_ref)
+            try:
+                raw_contents = await get_github_raw_content(github_ref, credentials)
+            except FileNotFound:
+                exit_with_error(
+                    "Can't access that file in Github. It either doesn't exist or is private. "
+                    "If it's private retry with `--credentials`.",
+                    progress = progress,
+                )
             try:
                 parameter_schema = get_parameter_schema_from_content(
                     raw_contents, function
                 )
             except ValueError:
                 exit_with_error(
-                    f"Could not find function '{function}' in {github_ref.filepath}"
+                    f"Could not find function '{function}' in {github_ref.filepath}",
+                    progress=progress,
                 )
 
-            progress.update(task, description="Ensuring work pool exists...")
+            progress.update(task, description="Confirming work pool exists...")
             work_pool = await client.ensure_managed_work_pool()
 
             progress.update(task, description="Deploying flow...")
             deployment_name = f"{function}_deployment"
 
+            credentials_name = None
+            if credentials:
+                progress.update(task, description="Syncing credentials...")
+                credentials_name = f"{github_ref.owner}-{github_ref.repo}-credentials"
+                await client.create_credentials_secret(
+                    credentials_name, credentials
+                )
+
             pull_steps = [
-                github_ref.pull_step,
+                to_pull_step(github_ref, credentials_name)
                 # TODO: put back flowify if this a public repo? need to figure that out.
             ]
 
