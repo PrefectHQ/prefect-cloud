@@ -55,15 +55,6 @@ jobs:
           python -m pip install -U uv pre-commit
           uv pip install --upgrade --system -e .[dev]
 
-      - name: Setup NodeJS
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache-dependency-path: "**/package-lock.json"
-
-      - name: Install mintlify-scrape
-        run: npm install -g @mintlify/scraping
-
       - name: Run pre-commit
         run: |
           pre-commit run --show-diff-on-failure --color=always --all-files
