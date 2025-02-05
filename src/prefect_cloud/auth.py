@@ -2,18 +2,17 @@ import json
 import socket
 import threading
 import webbrowser
-from contextlib import contextmanager
+from contextlib import asynccontextmanager,contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Queue
-from typing import Generator, Sequence
+from typing import AsyncGenerator, Generator, Sequence
 from urllib.parse import parse_qs, quote, urlparse
 from uuid import UUID
 
-import httpx
 import toml
 from pydantic import BaseModel, TypeAdapter
-
+from prefect_cloud.client import PrefectCloudClient
 from prefect_cloud.utilities.tui import prompt_select_from_list
 
 # TODO: Get this configuration from the user's environment if possible
@@ -55,7 +54,7 @@ class Me(BaseModel):
     handle: str
 
 
-def login(api_key: str | None = None, workspace_id_or_slug: str | None = None):
+async def login(api_key: str | None = None, workspace_id_or_slug: str | None = None):
     """Logs the user into Prefect Cloud interactively, setting their active profile"""
     if not api_key:
         api_key = get_api_key()
@@ -67,10 +66,10 @@ def login(api_key: str | None = None, workspace_id_or_slug: str | None = None):
 
     workspace: Workspace | None = None
     if workspace_id_or_slug:
-        workspace = lookup_workspace(api_key, workspace_id_or_slug)
+        workspace = await lookup_workspace(api_key, workspace_id_or_slug)
 
     if not workspace:
-        workspace = prompt_for_workspace(api_key)
+        workspace = await prompt_for_workspace(api_key)
         if not workspace:
             return
 
@@ -82,12 +81,12 @@ def logout():
     remove_cloud_profile()
 
 
-@contextmanager
-def cloud_client(api_key: str) -> Generator[httpx.Client, None, None]:
+@asynccontextmanager
+async def cloud_client(api_key: str) -> AsyncGenerator[PrefectCloudClient, None]:
     """Creates a client for the Prefect Cloud API"""
-    headers = {"Authorization": f"Bearer {api_key}"}
 
-    with httpx.Client(base_url=CLOUD_API_URL, headers=headers) as client:
+
+    async with PrefectCloudClient(api_url=CLOUD_API_URL, api_key=api_key) as client:
         yield client
 
 
@@ -209,28 +208,28 @@ def login_server(result_queue: Queue[str | None]) -> Generator[str, None, None]:
         server.server_close()
 
 
-def me(api_key: str) -> Me:
+async def me(api_key: str) -> Me:
     """Gets the current user's information"""
-    with cloud_client(api_key) as client:
-        response = client.get("/me/")
+    async with cloud_client(api_key) as client:
+        response = await client.request("GET", "/me/")
         response.raise_for_status()
 
     return Me.model_validate_json(response.text)
 
 
-def get_accounts(api_key: str) -> Sequence[Account]:
+async def get_accounts(api_key: str) -> Sequence[Account]:
     """Gets the list of accounts for the current user"""
-    with cloud_client(api_key) as client:
-        response = client.get("/me/accounts")
+    async with cloud_client(api_key) as client:
+        response = await client.request("GET", "/me/accounts")
         response.raise_for_status()
 
         return TypeAdapter(list[Account]).validate_json(response.text)
 
 
-def get_workspaces(api_key: str) -> Sequence[Workspace]:
+async def get_workspaces(api_key: str) -> Sequence[Workspace]:
     """Gets the list of workspaces for the current user"""
-    with cloud_client(api_key) as client:
-        response = client.get("/me/workspaces")
+    async with cloud_client(api_key) as client:
+        response = await client.request("GET", "/me/workspaces")
         response.raise_for_status()
 
         workspaces = TypeAdapter(list[Workspace]).validate_json(response.text)
@@ -239,7 +238,7 @@ def get_workspaces(api_key: str) -> Sequence[Workspace]:
         return workspaces
 
 
-def lookup_workspace(api_key: str, workspace_id_or_slug: str) -> Workspace | None:
+async def lookup_workspace(api_key: str, workspace_id_or_slug: str) -> Workspace | None:
     """Looks up a workspace by ID or slug"""
     workspace_id: UUID | None = None
     try:
@@ -247,7 +246,7 @@ def lookup_workspace(api_key: str, workspace_id_or_slug: str) -> Workspace | Non
     except ValueError:
         pass
 
-    for workspace in get_workspaces(api_key):
+    for workspace in await get_workspaces(api_key):
         if workspace_id and workspace.workspace_id == workspace_id:
             return workspace
         if workspace.full_handle == workspace_id_or_slug:
@@ -258,9 +257,9 @@ def lookup_workspace(api_key: str, workspace_id_or_slug: str) -> Workspace | Non
     return None
 
 
-def prompt_for_workspace(api_key: str) -> Workspace | None:
+async def prompt_for_workspace(api_key: str) -> Workspace | None:
     """Prompts the user to select a workspace from the list of available workspaces"""
-    workspaces = get_workspaces(api_key)
+    workspaces = await get_workspaces(api_key)
 
     if not workspaces:
         return None

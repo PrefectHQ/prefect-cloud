@@ -173,11 +173,11 @@ async def init():
 
 
 @app.command()
-def login(
+async def login(
     key: str = typer.Option(None, "--key", "-k"),
     workspace: str = typer.Option(None, "--workspace", "-w"),
 ):
-    auth.login(api_key=key, workspace_id_or_slug=workspace)
+    await auth.login(api_key=key, workspace_id_or_slug=workspace)
 
 
 @app.command()

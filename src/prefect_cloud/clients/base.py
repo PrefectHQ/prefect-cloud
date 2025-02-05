@@ -81,6 +81,9 @@ ServerRoutes = Literal[
     "/work_queues/{id}/status",
     "/work_queues/filter",
     "/work_queues/name/{name}",
+    "/me/workspaces",
+    "/me/accounts",
+    "/me/",
 ]
 
 

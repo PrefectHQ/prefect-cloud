@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Any, Literal
-from typing_extensions import TypeAlias
-
+from typing import Any, Literal, NoReturn, Optional
+from typing_extensions import TypeAlias, Self
+from contextlib import AsyncExitStack
 import httpcore
 import httpx
+import asyncio
 from prefect_cloud.schemas.actions import (
     WorkPoolCreate,
     BlockDocumentCreate,
@@ -56,6 +57,14 @@ class PrefectCloudClient(
         httpx_settings.setdefault("headers", {"Authorization": f"Bearer {api_key}"})
         httpx_settings.setdefault("base_url", api_url)
 
+                
+                
+        self._context_stack: int = 0
+        self._exit_stack = AsyncExitStack()
+
+        self._closed = False
+        self._started = False
+
         # See https://www.python-httpx.org/advanced/#pool-limit-configuration
         httpx_settings.setdefault(
             "limits",
@@ -88,6 +97,7 @@ class PrefectCloudClient(
         self._client = PrefectHttpxAsyncClient(**httpx_settings)
         self._loop = None
 
+
         # See https://www.python-httpx.org/advanced/#custom-transports
         #
         # If we're using an HTTP/S client (not the ephemeral client), adjust the
@@ -108,6 +118,8 @@ class PrefectCloudClient(
                     pool = getattr(server_transport, "_pool", None)
                     if isinstance(pool, httpcore.AsyncConnectionPool):
                         setattr(pool, "_retries", 3)
+
+
 
     async def ensure_managed_work_pool(
         self, name: str = settings.default_managed_work_pool_name
@@ -193,6 +205,62 @@ class PrefectCloudClient(
                 )
             )
 
+    async def __aenter__(self) -> Self:
+        """
+        Start the client.
+
+        If the client is already started, this will raise an exception.
+
+        If the client is already closed, this will raise an exception. Use a new client
+        instance instead.
+        """
+        if self._closed:
+            # httpx.AsyncClient does not allow reuse so we will not either.
+            raise RuntimeError(
+                "The client cannot be started again after closing. "
+                "Retrieve a new client with `get_client()` instead."
+            )
+
+        self._context_stack += 1
+
+        if self._started:
+            # allow reentrancy
+            return self
+
+        self._loop = asyncio.get_running_loop()
+        await self._exit_stack.__aenter__()
+
+        # Enter a lifespan context if using an ephemeral application.
+        # See https://github.com/encode/httpx/issues/350
+      
+
+
+        # Enter the httpx client's context
+        await self._exit_stack.enter_async_context(self._client)
+
+        self._started = True
+
+        return self
+
+    async def __aexit__(self, *exc_info: Any) -> Optional[bool]:
+        """
+        Shutdown the client.
+        """
+
+        self._context_stack -= 1
+        if self._context_stack > 0:
+            return
+        self._closed = True
+        return await self._exit_stack.__aexit__(*exc_info)
+
+    def __enter__(self) -> NoReturn:
+        raise RuntimeError(
+            "The `PrefectClient` must be entered with an async context. Use 'async "
+            "with PrefectClient(...)' not 'with PrefectClient(...)'"
+        )
+
+    def __exit__(self, *_: object) -> NoReturn:
+        assert False, "This should never be called but must be defined for __enter__"
 
 def get_prefect_cloud_client():
     return PrefectCloudClient(
