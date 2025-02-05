@@ -1,9 +1,13 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 from httpx import AsyncClient
+
+
+class FileNotFound(Exception):
+    pass
 
 
 @dataclass
@@ -45,7 +49,7 @@ class GitHubFileRef:
             )
 
         owner, repo = parts[:2]
-        ref_type = parts[2]
+        ref_type = cast(Literal["blob", "tree"], parts[2])
 
         if ref_type not in ("blob", "tree"):
             raise ValueError(
@@ -74,25 +78,36 @@ class GitHubFileRef:
         """Get the raw.githubusercontent.com URL for this file."""
         return f"https://raw.githubusercontent.com/{self.owner}/{self.repo}/refs/heads/{self.branch}/{self.filepath}"
 
-    @property
-    def pull_step(self) -> dict[str, Any]:
-        return {
-            "prefect.deployments.steps.git_clone": {
-                "repository": self.clone_url,
-                "branch": self.branch,
-                # TODO: support access token
-            }
-        }
-
     def __str__(self) -> str:
         return f"github.com/{self.owner}/{self.repo} @ {self.branch} - {self.filepath}"
 
 
-async def get_github_raw_content(github_ref: GitHubFileRef) -> str:
+def to_pull_step(
+    github_ref: GitHubFileRef, credentials_block: str | None = None
+) -> dict[str, Any]:
+    pull_step_kwargs = {
+        "repository": github_ref.clone_url,
+        "branch": github_ref.branch,
+    }
+    if credentials_block:
+        pull_step_kwargs["access_token"] = (
+            "{{ prefect.blocks.secret." + credentials_block + " }}"
+        )
+
+    return {"prefect.deployments.steps.git_clone": pull_step_kwargs}
+
+
+async def get_github_raw_content(
+    github_ref: GitHubFileRef, credentials: str | None = None
+) -> str:
     """Get raw content of a file from GitHub."""
+    headers = {}
+    if credentials:
+        headers["Authorization"] = f"Bearer {credentials}"
+
     async with AsyncClient() as client:
-        response = await client.get(github_ref.raw_url)
+        response = await client.get(github_ref.raw_url, headers=headers)
         if response.status_code == 404:
-            raise ValueError(f"File not found: {github_ref.filepath}")
+            raise FileNotFound(f"File not found: {github_ref}")
         response.raise_for_status()
         return response.text

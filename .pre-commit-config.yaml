@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: "v0.9.4"
+    hooks:
+      - id: ruff
+        language_version: python3
+        args: [--fix, --exit-non-zero-on-fix, --show-fixes]
+      - id: ruff-format
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    # uv version.
+    rev: 0.5.26
+    hooks:
+      - id: uv-lock
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.6
+    hooks:
+      - id: codespell
+        exclude: package-lock.json|_vendor/.*|docs/styles/.*
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=1.10.0,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0
+          - types-cachetools==5.3.0.5
+          - types-pyyaml==6.0.12.9
+          - types-toml==0.10.8.20240310
+        files: |
+          (?x)^(
+            src/prefect_cloud/.*
+          )$
