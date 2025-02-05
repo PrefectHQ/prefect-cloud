@@ -16,7 +16,7 @@ $ uvx prefect cloud login
 ## Deploy your workflow from github
 
 ```shell
-$ uvx prefect-cloud deploy FUNCTION_NAME --from PYTHON_FILE_URL_IN_REPO
+$ uvx prefect-cloud deploy FUNCTION_NAME --from GITHUB_PY_FILE_URL
 ```
 For example:
 ```shell
@@ -25,7 +25,7 @@ $ uvx prefect-cloud deploy hello_world --from https://github.com/jakekaplan/demo
 ### From a Private Repo
 ```shell
 # private repo
-$ uvx prefect-cloud deploy FUNCTION_NAME --from PYTHON_FILE_URL_IN_REPO --credentials GITHUB_TOKEN
+$ uvx prefect-cloud deploy FUNCTION_NAME --from GITHUB_PY_FILE_URL --credentials GITHUB_TOKEN
 ```
 
 ### With dependencies:
