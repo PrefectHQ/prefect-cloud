@@ -1,9 +1,13 @@
+from uuid import UUID
+
 import typer
 from prefect.cli._utilities import exit_with_error as _exit_with_error
 from prefect.cli.root import PrefectTyper
 from prefect.client.base import ServerType, determine_server_type
 from prefect.utilities.urls import url_for
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
+from rich.text import Text
 
 from prefect_cloud import auth
 from prefect_cloud.client import (
@@ -18,6 +22,7 @@ from prefect_cloud.github import (
     to_pull_step,
 )
 from prefect_cloud.utilities.flows import get_parameter_schema_from_content
+from prefect_cloud.utilities.tui import redacted
 
 app = PrefectTyper()
 
@@ -178,3 +183,62 @@ def login(
 @app.command()
 def logout():
     auth.logout()
+
+
+@app.command(aliases=["whoami", "me"])
+def who_am_i():
+    api_key = auth.get_api_key_or_login()
+
+    me = auth.me(api_key)
+    accounts = auth.get_accounts(api_key)
+    workspaces = auth.get_workspaces(api_key)
+
+    table = Table(title="User", show_header=False)
+    table.add_column("Property")
+    table.add_column("Value")
+
+    table.add_row("Name", f"{me.first_name} {me.last_name}")
+    table.add_row("Email", me.email)
+    table.add_row("Handle", me.handle)
+    table.add_row("ID", str(me.id))
+    table.add_row("API Key", redacted(api_key))
+
+    app.console.print(table)
+
+    app.console.print("")
+
+    table = Table(title="Accounts and Workspaces", show_header=True)
+    table.add_column("Account")
+    table.add_column("Handle")
+    table.add_column("ID")
+
+    workspaces_by_account: dict[UUID, list[auth.Workspace]] = {}
+    for workspace in workspaces:
+        if workspace.account_id not in workspaces_by_account:
+            workspaces_by_account[workspace.account_id] = []
+        workspaces_by_account[workspace.account_id].append(workspace)
+
+    for account in accounts:
+        if account != accounts[0]:
+            table.add_row("", "", "")
+
+        table.add_row(
+            Text(account.account_name, style="bold"),
+            Text(account.account_handle, style="bold"),
+            Text(str(account.account_id), style="bold"),
+        )
+
+        account_workspaces = workspaces_by_account.get(account.account_id, [])
+        for i, workspace in enumerate(account_workspaces):
+            table.add_row(
+                Text(
+                    account.account_handle
+                    if i == 0 and account.account_handle != account.account_name
+                    else "",
+                    style="dim italic",
+                ),
+                Text(workspace.workspace_handle),
+                Text(str(workspace.workspace_id)),
+            )
+
+    app.console.print(table)

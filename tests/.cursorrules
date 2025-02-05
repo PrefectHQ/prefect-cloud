@@ -1,0 +1,20 @@
+This is the test suite for the `prefect-cloud` command library.
+
+When generating test suites, favor generating a module of functional tests
+rather than a class (unless the tests are already in a class).  Always add the
+proper type hints to the _arguments_ of test and fixture functions, and to the
+return values of fixtures, but don't add the `-> None` return value of every
+test function.
+
+When mocking the HTTP client, use `respx`.  Always set the filesystem to use a
+`tmp_path` if files will be used in tests in order to avoid accidentally
+modifying the files in the developer's home directory.
+
+Stylistically, keep tests short and focused, and favor more smaller tests that share
+some setup fixtures over longer tests.  Multiple assertions in one test are just fine,
+as long as we're just testing roughly one thing.  Use the arrange-act-assert pattern,
+but DO NOT add useless comments to that effect.  When generating tests, don't add any
+comments that are unhelpfully just repeating what the code itself plainly says.  Always
+generate docstrings for test functions that declare the behavior they are testing, in a
+declarative form with should language like "`prefect cloud login` should set the active
+profile".
