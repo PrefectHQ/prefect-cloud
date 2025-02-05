@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Queue
-from typing import Generator
+from typing import Generator, Sequence
 from urllib.parse import parse_qs, quote, urlparse
 from uuid import UUID
 
@@ -41,7 +41,7 @@ class Workspace(BaseModel):
         )
 
 
-def login(api_key: str | None = None):
+def login(api_key: str | None = None, workspace_id_or_slug: str | None = None):
     """Logs the user into Prefect Cloud interactively, setting their active profile"""
     if not api_key:
         api_key = get_api_key()
@@ -51,9 +51,14 @@ def login(api_key: str | None = None):
         if not api_key:
             return
 
-    workspace = prompt_for_workspace(api_key)
+    workspace: Workspace | None = None
+    if workspace_id_or_slug:
+        workspace = lookup_workspace(api_key, workspace_id_or_slug)
+
     if not workspace:
-        return
+        workspace = prompt_for_workspace(api_key)
+        if not workspace:
+            return
 
     set_cloud_profile(api_key, workspace)
 
@@ -153,23 +158,51 @@ def login_server(result_queue: Queue[str | None]) -> Generator[str, None, None]:
         server.server_close()
 
 
-def prompt_for_workspace(api_key: str) -> Workspace | None:
-    """Prompts the user to select a workspace from the list of available workspaces"""
+def get_workspaces(api_key: str) -> Sequence[Workspace]:
+    """Gets the list of workspaces for the current user"""
     with cloud_client(api_key) as client:
         response = client.get("/me/workspaces")
         response.raise_for_status()
 
         workspaces = TypeAdapter(list[Workspace]).validate_json(response.text)
-        if len(workspaces) == 1:
-            return workspaces[0]
+        workspaces.sort(key=lambda w: w.full_handle)
 
-        selected = prompt_select_from_list(
-            "Select a workspace",
-            sorted([workspace.full_handle for workspace in workspaces]),
-        )
-        return next(
-            workspace for workspace in workspaces if workspace.full_handle == selected
-        )
+        return workspaces
+
+
+def lookup_workspace(api_key: str, workspace_id_or_slug: str) -> Workspace | None:
+    """Looks up a workspace by ID or slug"""
+    workspace_id: UUID | None = None
+    try:
+        workspace_id = UUID(workspace_id_or_slug)
+    except ValueError:
+        pass
+
+    for workspace in get_workspaces(api_key):
+        if workspace_id and workspace.workspace_id == workspace_id:
+            return workspace
+        if workspace.full_handle == workspace_id_or_slug:
+            return workspace
+        if workspace.workspace_handle == workspace_id_or_slug:
+            return workspace
+
+    return None
+
+
+def prompt_for_workspace(api_key: str) -> Workspace | None:
+    """Prompts the user to select a workspace from the list of available workspaces"""
+    workspaces = get_workspaces(api_key)
+
+    if len(workspaces) == 1:
+        return workspaces[0]
+
+    selected = prompt_select_from_list(
+        "Select a workspace",
+        sorted([workspace.full_handle for workspace in workspaces]),
+    )
+    return next(
+        workspace for workspace in workspaces if workspace.full_handle == selected
+    )
 
 
 def get_api_key() -> str | None:
