@@ -1,13 +1,16 @@
-from typing import Any
+from __future__ import annotations
+from typing import Any, Literal
+from typing_extensions import TypeAlias
 
-from prefect.client.orchestration import PrefectClient
-from prefect.exceptions import ObjectNotFound
-from prefect.client.schemas.actions import (
+import httpcore
+import httpx
+from prefect_cloud.schemas.actions import (
+    WorkPoolCreate,
     BlockDocumentCreate,
     BlockDocumentUpdate,
-    WorkPoolCreate,
 )
-from prefect.client.schemas.filters import WorkPoolFilter, WorkPoolFilterType
+from prefect_cloud.schemas.filters import WorkPoolFilter, WorkPoolFilterType
+from prefect_cloud.utilities.exception import ObjectNotFound
 from prefect.settings import (
     PREFECT_API_KEY,
     PREFECT_API_URL,
@@ -17,6 +20,11 @@ from prefect.workers.utilities import (
     get_default_base_job_template_for_infrastructure_type,
 )
 from prefect_cloud.settings import settings
+from prefect_cloud.clients.http import PrefectHttpxAsyncClient
+from prefect_cloud.clients.work_pools import WorkPoolAsyncClient
+from prefect_cloud.clients.deployments import DeploymentAsyncClient
+from prefect_cloud.clients.flow import FlowAsyncClient
+from prefect_cloud.clients.blocks import BlocksDocumentAsyncClient
 
 PREFECT_MANAGED = "prefect:managed"
 
@@ -32,7 +40,75 @@ def get_cloud_api_url():
         return "https://api.prefect.cloud/api"
 
 
-class PrefectCloudClient(PrefectClient):
+HTTP_METHODS: TypeAlias = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
+
+PREFECT_API_REQUEST_TIMEOUT = 60.0
+
+
+class PrefectCloudClient(
+    WorkPoolAsyncClient,
+    DeploymentAsyncClient,
+    FlowAsyncClient,
+    BlocksDocumentAsyncClient,
+):
+    def __init__(self, api_url: str, api_key: str):
+        httpx_settings: dict[str, Any] = {}
+        httpx_settings.setdefault("headers", {"Authorization": f"Bearer {api_key}"})
+        httpx_settings.setdefault("base_url", api_url)
+
+        # See https://www.python-httpx.org/advanced/#pool-limit-configuration
+        httpx_settings.setdefault(
+            "limits",
+            httpx.Limits(
+                # We see instability when allowing the client to open many connections at once.
+                # Limiting concurrency results in more stable performance.
+                max_connections=16,
+                max_keepalive_connections=8,
+                # The Prefect Cloud LB will keep connections alive for 30s.
+                # Only allow the client to keep connections alive for 25s.
+                keepalive_expiry=25,
+            ),
+        )
+
+        # See https://www.python-httpx.org/http2/
+        # Enabling HTTP/2 support on the client does not necessarily mean that your requests
+        # and responses will be transported over HTTP/2, since both the client and the server
+        # need to support HTTP/2. If you connect to a server that only supports HTTP/1.1 the
+        # client will use a standard HTTP/1.1 connection instead.
+        httpx_settings.setdefault("http2", False)
+        httpx_settings.setdefault(
+            "timeout",
+            httpx.Timeout(
+                connect=PREFECT_API_REQUEST_TIMEOUT,
+                read=PREFECT_API_REQUEST_TIMEOUT,
+                write=PREFECT_API_REQUEST_TIMEOUT,
+                pool=PREFECT_API_REQUEST_TIMEOUT,
+            ),
+        )
+        self._client = PrefectHttpxAsyncClient(**httpx_settings)
+        self._loop = None
+
+        # See https://www.python-httpx.org/advanced/#custom-transports
+        #
+        # If we're using an HTTP/S client (not the ephemeral client), adjust the
+        # transport to add retries _after_ it is instantiated. If we alter the transport
+        # before instantiation, the transport will not be aware of proxies unless we
+        # reproduce all of the logic to make it so.
+        #
+        # Only alter the transport to set our default of 3 retries, don't modify any
+        # transport a user may have provided via httpx_settings.
+        #
+        # Making liberal use of getattr and isinstance checks here to avoid any
+        # surprises if the internals of httpx or httpcore change on us
+        if not httpx_settings.get("transport"):
+            transport_for_url = getattr(self._client, "_transport_for_url", None)
+            if callable(transport_for_url):
+                server_transport = transport_for_url(httpx.URL(api_url))
+                if isinstance(server_transport, httpx.AsyncHTTPTransport):
+                    pool = getattr(server_transport, "_pool", None)
+                    if isinstance(pool, httpcore.AsyncConnectionPool):
+                        setattr(pool, "_retries", 3)
+
     async def ensure_managed_work_pool(
         self, name: str = settings.default_managed_work_pool_name
     ) -> str:
@@ -48,6 +124,9 @@ class PrefectCloudClient(PrefectClient):
         template = await get_default_base_job_template_for_infrastructure_type(
             PREFECT_MANAGED
         )
+        if template is None:
+            raise ValueError("No default base job template found for managed work pool")
+
         work_pool = await self.create_work_pool(
             work_pool=WorkPoolCreate(
                 name=name,
