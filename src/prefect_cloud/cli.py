@@ -187,7 +187,7 @@ def logout():
 
 @app.command(aliases=["whoami", "me"])
 def who_am_i():
-    api_key = auth.get_api_key_or_login()
+    ui_url, api_url, api_key = auth.get_cloud_urls_or_login()
 
     me = auth.me(api_key)
     accounts = auth.get_accounts(api_key)
@@ -201,6 +201,8 @@ def who_am_i():
     table.add_row("Email", me.email)
     table.add_row("Handle", me.handle)
     table.add_row("ID", str(me.id))
+    table.add_row("Dashboard", ui_url)
+    table.add_row("API URL", api_url)
     table.add_row("API Key", redacted(api_key))
 
     app.console.print(table)

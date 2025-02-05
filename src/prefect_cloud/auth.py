@@ -91,6 +91,34 @@ def cloud_client(api_key: str) -> Generator[httpx.Client, None, None]:
         yield client
 
 
+def get_cloud_urls_or_login() -> tuple[str, str, str]:
+    """Gets the cloud UI URL, API URL, and API key"""
+    profile = get_cloud_profile()
+    if not profile:
+        login()
+
+    profile = get_cloud_profile()
+    if not profile:
+        raise ValueError("No cloud profile found")
+
+    api_url: str | None = profile.get("PREFECT_API_URL")
+    if not api_url:
+        raise ValueError("No API URL found")
+
+    ui_url = (
+        api_url.replace("https://api.", "https://app.")
+        .replace("/api", "")
+        .replace("/accounts/", "/account/")
+        .replace("/workspaces/", "/workspace/")
+    )
+
+    api_key = profile.get("PREFECT_API_KEY")
+    if not api_key:
+        raise ValueError("No API key found")
+
+    return ui_url, api_url, api_key
+
+
 def get_api_key_or_login() -> str:
     """Gets a validated API key or logs the user in if no API key is available"""
     api_key = get_api_key()
@@ -283,7 +311,7 @@ def cloud_profile_name() -> str:
         return "prefect-cloud"
 
 
-def get_cloud_profile() -> dict | None:
+def get_cloud_profile() -> dict[str, str] | None:
     """Returns the current cloud profile"""
     profile_path = PREFECT_HOME / "profiles.toml"
     if not profile_path.exists():

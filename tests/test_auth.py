@@ -4,6 +4,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+import toml
 from httpx import HTTPStatusError
 from respx import Router
 
@@ -14,6 +15,7 @@ from prefect_cloud.auth import (
     cloud_client,
     get_accounts,
     get_cloud_profile,
+    get_cloud_urls_or_login,
     get_workspaces,
     key_is_valid,
     login,
@@ -362,3 +364,122 @@ def test_logout_removes_profile(
     # Then remove it
     logout()
     assert not mock_profiles_path.exists()
+
+
+def test_get_cloud_urls_or_login_with_valid_profile(mock_profiles_path: Path):
+    """get_cloud_urls_or_login() should return correct URLs and API key when profile exists."""
+    profile = {
+        "profiles": {
+            "prefect-cloud": {
+                "PREFECT_API_KEY": "test_key",
+                "PREFECT_API_URL": "https://api.prefect.cloud/api/accounts/123/workspaces/456",
+            }
+        }
+    }
+    mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    mock_profiles_path.write_text(toml.dumps(profile))
+
+    ui_url, api_url, api_key = get_cloud_urls_or_login()
+
+    assert ui_url == "https://app.prefect.cloud/account/123/workspace/456"
+    assert api_url == "https://api.prefect.cloud/api/accounts/123/workspaces/456"
+    assert api_key == "test_key"
+
+
+def test_get_cloud_urls_or_login_with_no_profile_successful_login(
+    mock_profiles_path: Path, sample_api_key: str, sample_workspace: Workspace
+):
+    """get_cloud_urls_or_login() should attempt login when no profile exists."""
+    with patch("prefect_cloud.auth.login") as mock_login:
+        mock_login.side_effect = lambda: set_cloud_profile(
+            sample_api_key, sample_workspace
+        )
+
+        ui_url, api_url, api_key = get_cloud_urls_or_login()
+
+        mock_login.assert_called_once()
+        assert (
+            ui_url
+            == "https://app.prefect.cloud/account/11111111-1234-5678-1234-567812345678/workspace/22222222-1234-5678-1234-567812345678"
+        )
+        assert api_url == sample_workspace.api_url
+        assert api_key == sample_api_key
+
+
+def test_get_cloud_urls_or_login_with_no_profile_failed_login(mock_profiles_path: Path):
+    """get_cloud_urls_or_login() should raise error when login fails."""
+    with patch("prefect_cloud.auth.login") as mock_login:
+        mock_login.return_value = None
+
+        with pytest.raises(ValueError, match="No cloud profile found"):
+            get_cloud_urls_or_login()
+
+        mock_login.assert_called_once()
+
+
+def test_get_cloud_urls_or_login_with_profile_missing_api_url(mock_profiles_path: Path):
+    """get_cloud_urls_or_login() should raise error when profile has no API URL."""
+    profile = {
+        "profiles": {
+            "prefect-cloud": {
+                "PREFECT_API_KEY": "test_key",
+            }
+        }
+    }
+    mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    mock_profiles_path.write_text(toml.dumps(profile))
+
+    with pytest.raises(ValueError, match="No API URL found"):
+        get_cloud_urls_or_login()
+
+
+def test_get_cloud_urls_or_login_with_profile_missing_api_key(mock_profiles_path: Path):
+    """get_cloud_urls_or_login() should raise error when profile has no API key."""
+    profile = {
+        "profiles": {
+            "prefect-cloud": {
+                "PREFECT_API_URL": "https://api.prefect.cloud/api/accounts/123/workspaces/456",
+            }
+        }
+    }
+    mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    mock_profiles_path.write_text(toml.dumps(profile))
+
+    with pytest.raises(ValueError, match="No API key found"):
+        get_cloud_urls_or_login()
+
+
+@pytest.mark.parametrize(
+    "api_url,expected_ui_url",
+    [
+        (
+            "https://api.prefect.cloud/api/accounts/123/workspaces/456",
+            "https://app.prefect.cloud/account/123/workspace/456",
+        ),
+        (
+            "https://api.stg.prefect.dev/api/accounts/123/workspaces/456",
+            "https://app.stg.prefect.dev/account/123/workspace/456",
+        ),
+        (
+            "http://localhost:4200/api/accounts/123/workspaces/456",
+            "http://localhost:4200/account/123/workspace/456",
+        ),
+    ],
+)
+def test_get_cloud_urls_or_login_url_transformations(
+    mock_profiles_path: Path, api_url: str, expected_ui_url: str
+):
+    """get_cloud_urls_or_login() should correctly transform API URLs to UI URLs."""
+    profile = {
+        "profiles": {
+            "prefect-cloud": {
+                "PREFECT_API_KEY": "test_key",
+                "PREFECT_API_URL": api_url,
+            }
+        }
+    }
+    mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    mock_profiles_path.write_text(toml.dumps(profile))
+
+    ui_url, _, _ = get_cloud_urls_or_login()
+    assert ui_url == expected_ui_url
