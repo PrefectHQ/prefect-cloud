@@ -1,21 +1,23 @@
 from typing import Any
+from uuid import UUID
 
 from prefect.client.orchestration import PrefectClient
-from prefect.exceptions import ObjectNotFound
 from prefect.client.schemas.actions import (
     BlockDocumentCreate,
     BlockDocumentUpdate,
     WorkPoolCreate,
 )
 from prefect.client.schemas.filters import WorkPoolFilter, WorkPoolFilterType
+from prefect.exceptions import ObjectNotFound
 from prefect.settings import (
-    PREFECT_API_KEY,
     PREFECT_API_URL,
 )
 from prefect.utilities.callables import ParameterSchema
 from prefect.workers.utilities import (
     get_default_base_job_template_for_infrastructure_type,
 )
+
+from prefect_cloud import auth
 from prefect_cloud.settings import settings
 
 PREFECT_MANAGED = "prefect:managed"
@@ -114,9 +116,26 @@ class PrefectCloudClient(PrefectClient):
                 )
             )
 
+    async def pause_deployment(self, deployment_id: UUID):
+        deployment = await self.read_deployment(deployment_id)
 
-def get_prefect_cloud_client():
+        for schedule in deployment.schedules:
+            await self.update_deployment_schedule(
+                deployment.id, schedule.id, active=False
+            )
+
+    async def resume_deployment(self, deployment_id: UUID):
+        deployment = await self.read_deployment(deployment_id)
+
+        for schedule in deployment.schedules:
+            await self.update_deployment_schedule(
+                deployment.id, schedule.id, active=True
+            )
+
+
+def get_prefect_cloud_client() -> PrefectCloudClient:
+    _, api_url, api_key = auth.get_cloud_urls_or_login()
     return PrefectCloudClient(
-        api=PREFECT_API_URL.value(),
-        api_key=PREFECT_API_KEY.value(),
+        api=api_url,
+        api_key=api_key,
     )

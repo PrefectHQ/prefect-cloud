@@ -1,15 +1,21 @@
 from uuid import UUID
 
 import typer
+import tzlocal
 from prefect.cli._utilities import exit_with_error as _exit_with_error
 from prefect.cli.root import PrefectTyper
-from prefect.client.base import ServerType, determine_server_type
+from prefect.client.schemas.objects import DeploymentSchedule
+from prefect.client.schemas.schedules import (
+    CronSchedule,
+    IntervalSchedule,
+    RRuleSchedule,
+)
 from prefect.utilities.urls import url_for
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
 
-from prefect_cloud import auth
+from prefect_cloud import auth, deployments
 from prefect_cloud.client import (
     get_cloud_api_url,
     get_prefect_cloud_client,
@@ -31,11 +37,6 @@ def exit_with_error(message: str, progress: Progress = None):
     if progress:
         progress.stop()
     _exit_with_error(message)
-
-
-def ensure_prefect_cloud():
-    if determine_server_type() != ServerType.CLOUD:
-        exit_with_error("Not logged into Prefect Cloud! Run `uvx prefect cloud login`.")
 
 
 def process_key_value_pairs(env: list[str]) -> dict[str, str]:
@@ -84,8 +85,6 @@ async def deploy(
         help="Optional credentials if code is in a private repository. ",
     ),
 ):
-    ensure_prefect_cloud()
-
     with Progress(
         SpinnerColumn(),
         TextColumn("[blue]{task.description}"),
@@ -163,13 +162,90 @@ async def deploy(
 
 
 @app.command()
-async def schedule():
-    raise NotImplementedError
+async def ls():
+    context = await deployments.list()
+
+    table = Table(title="Deployments")
+    table.add_column("Name")
+    table.add_column("Schedule")
+    table.add_column("Next run")
+    table.add_column("ID")
+
+    def describe_schedule(schedule: DeploymentSchedule) -> Text:
+        prefix = "✓" if schedule.active else " "
+        style = "dim" if not schedule.active else "green"
+
+        if isinstance(schedule.schedule, CronSchedule):
+            description = f"{schedule.schedule.cron} ({schedule.schedule.timezone})"
+        elif isinstance(schedule.schedule, IntervalSchedule):
+            description = f"Every {schedule.schedule.interval} seconds"
+        elif isinstance(schedule.schedule, RRuleSchedule):
+            description = f"{schedule.schedule.rrule}"
+        else:
+            return "TODO"
+
+        return Text(f"{prefix} {description})", style=style)
+
+    for deployment in context.deployments:
+        scheduling = Text("\n").join(
+            describe_schedule(schedule) for schedule in deployment.schedules
+        )
+
+        next_run = context.next_runs_by_deployment_id.get(deployment.id)
+        if next_run:
+            next_run_time = next_run.expected_start_time.astimezone(
+                tzlocal.get_localzone()
+            ).strftime("%Y-%m-%d %H:%M:%S %Z")
+        else:
+            next_run_time = ""
+
+        table.add_row(
+            f"{context.flows_by_id[deployment.flow_id].name}/{deployment.name}",
+            scheduling,
+            next_run_time,
+            str(deployment.id),
+        )
+
+    app.console.print(table)
+
+    app.console.print(
+        "* Cron cheatsheet: minute hour day-of-month month day-of-week",
+        style="dim",
+    )
 
 
 @app.command()
-async def init():
-    raise NotImplementedError
+async def schedule(
+    deployment: str = typer.Argument(
+        ...,
+        help="The deployment to schedule (either its name or ID).",
+    ),
+    schedule: str = typer.Argument(
+        ...,
+        help="The schedule to set, as a cron string. Use 'none' to unschedule.",
+    ),
+):
+    await deployments.schedule(deployment, schedule)
+
+
+@app.command()
+async def pause(
+    deployment: str = typer.Argument(
+        ...,
+        help="The deployment to pause (either its name or ID).",
+    ),
+):
+    await deployments.pause(deployment)
+
+
+@app.command()
+async def resume(
+    deployment: str = typer.Argument(
+        ...,
+        help="The deployment to resume (either its name or ID).",
+    ),
+):
+    await deployments.resume(deployment)
 
 
 @app.command()
