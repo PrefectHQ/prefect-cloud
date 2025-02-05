@@ -22,6 +22,12 @@ CLOUD_API_URL = "https://api.prefect.cloud/api"
 PREFECT_HOME = Path.home() / ".prefect"
 
 
+class Account(BaseModel):
+    account_id: UUID
+    account_name: str
+    account_handle: str
+
+
 class Workspace(BaseModel):
     account_id: UUID
     account_name: str
@@ -39,6 +45,14 @@ class Workspace(BaseModel):
         return (
             f"{CLOUD_API_URL}/accounts/{self.account_id}/workspaces/{self.workspace_id}"
         )
+
+
+class Me(BaseModel):
+    id: UUID
+    email: str
+    first_name: str
+    last_name: str
+    handle: str
 
 
 def login(api_key: str | None = None, workspace_id_or_slug: str | None = None):
@@ -75,6 +89,44 @@ def cloud_client(api_key: str) -> Generator[httpx.Client, None, None]:
 
     with httpx.Client(base_url=CLOUD_API_URL, headers=headers) as client:
         yield client
+
+
+def get_cloud_urls_or_login() -> tuple[str, str, str]:
+    """Gets the cloud UI URL, API URL, and API key"""
+    profile = get_cloud_profile()
+    if not profile:
+        login()
+
+    profile = get_cloud_profile()
+    if not profile:
+        raise ValueError("No cloud profile found")
+
+    api_url: str | None = profile.get("PREFECT_API_URL")
+    if not api_url:
+        raise ValueError("No API URL found")
+
+    ui_url = (
+        api_url.replace("https://api.", "https://app.")
+        .replace("/api", "")
+        .replace("/accounts/", "/account/")
+        .replace("/workspaces/", "/workspace/")
+    )
+
+    api_key = profile.get("PREFECT_API_KEY")
+    if not api_key:
+        raise ValueError("No API key found")
+
+    return ui_url, api_url, api_key
+
+
+def get_api_key_or_login() -> str:
+    """Gets a validated API key or logs the user in if no API key is available"""
+    api_key = get_api_key()
+    if not api_key:
+        api_key = login_interactively()
+        if not api_key:
+            raise ValueError("No API key found")
+    return api_key
 
 
 def key_is_valid(api_key: str) -> bool:
@@ -115,12 +167,11 @@ def login_server(result_queue: Queue[str | None]) -> Generator[str, None, None]:
             self.add_cors_headers()
             self.end_headers()
 
-        def do_GET(self):
+        def do_GET(self) -> None:
             query_params = parse_qs(urlparse(self.path).query)
             api_key = query_params.get("key", [""])[0] or None
 
             self.send_response(200)
-
             self.send_header("Content-type", "text/html")
             self.end_headers()
             self.wfile.write(b"""
@@ -158,6 +209,24 @@ def login_server(result_queue: Queue[str | None]) -> Generator[str, None, None]:
         server.server_close()
 
 
+def me(api_key: str) -> Me:
+    """Gets the current user's information"""
+    with cloud_client(api_key) as client:
+        response = client.get("/me/")
+        response.raise_for_status()
+
+    return Me.model_validate_json(response.text)
+
+
+def get_accounts(api_key: str) -> Sequence[Account]:
+    """Gets the list of accounts for the current user"""
+    with cloud_client(api_key) as client:
+        response = client.get("/me/accounts")
+        response.raise_for_status()
+
+        return TypeAdapter(list[Account]).validate_json(response.text)
+
+
 def get_workspaces(api_key: str) -> Sequence[Workspace]:
     """Gets the list of workspaces for the current user"""
     with cloud_client(api_key) as client:
@@ -193,6 +262,9 @@ def prompt_for_workspace(api_key: str) -> Workspace | None:
     """Prompts the user to select a workspace from the list of available workspaces"""
     workspaces = get_workspaces(api_key)
 
+    if not workspaces:
+        return None
+
     if len(workspaces) == 1:
         return workspaces[0]
 
@@ -216,10 +288,10 @@ def get_api_key() -> str | None:
 def load_profiles() -> dict:
     """Loads the profiles from the profiles file"""
     profile_path = PREFECT_HOME / "profiles.toml"
-    if not profile_path.exists():
-        return {}
-
-    profiles = toml.load(profile_path)
+    if profile_path.exists():
+        profiles = toml.load(profile_path)
+    else:
+        profiles = {}
 
     if "profiles" not in profiles:
         profiles["profiles"] = {}
@@ -239,7 +311,7 @@ def cloud_profile_name() -> str:
         return "prefect-cloud"
 
 
-def get_cloud_profile() -> dict | None:
+def get_cloud_profile() -> dict[str, str] | None:
     """Returns the current cloud profile"""
     profile_path = PREFECT_HOME / "profiles.toml"
     if not profile_path.exists():

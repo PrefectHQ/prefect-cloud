@@ -6,6 +6,12 @@ from rich.live import Live
 from rich.table import Table
 
 
+def redacted(value: str) -> str:
+    if len(value) <= 12:
+        return "*" * len(value)
+    return f"{value[:4]}{'*' * (len(value) - 8)}{value[-4:]}"
+
+
 def prompt_select_from_list(prompt: str, options: list[str]) -> str:
     """
     Given a list of options, display the values to user in a table and prompt them
