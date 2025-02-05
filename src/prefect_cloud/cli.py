@@ -1,21 +1,21 @@
 import typer
-from rich.progress import Progress, SpinnerColumn, TextColumn
-
 from prefect.cli._utilities import exit_with_error as _exit_with_error
 from prefect.cli.root import PrefectTyper
 from prefect.client.base import ServerType, determine_server_type
 from prefect.utilities.urls import url_for
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from prefect_cloud.dependencies import get_dependencies
-from prefect_cloud.github import (
-    GitHubFileRef,
-    get_github_raw_content,
-    FileNotFound,
-    to_pull_step,
-)
+from prefect_cloud import auth
 from prefect_cloud.client import (
     get_cloud_api_url,
     get_prefect_cloud_client,
+)
+from prefect_cloud.dependencies import get_dependencies
+from prefect_cloud.github import (
+    FileNotFound,
+    GitHubFileRef,
+    get_github_raw_content,
+    to_pull_step,
 )
 from prefect_cloud.utilities.flows import get_parameter_schema_from_content
 
@@ -165,3 +165,16 @@ async def schedule():
 @app.command()
 async def init():
     raise NotImplementedError
+
+
+@app.command()
+def login(
+    key: str = typer.Option(None, "--key", "-k"),
+    workspace: str = typer.Option(None, "--workspace", "-w"),
+):
+    auth.login(api_key=key, workspace_id_or_slug=workspace)
+
+
+@app.command()
+def logout():
+    auth.logout()

@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Prefect Technologies, Inc.", email = "help@prefect.io"}
 ]
+
 requires-python = ">=3.12"
 dependencies = [
     "prefect>=3.1.14",
@@ -15,8 +16,16 @@ dependencies = [
     "typer>=0.13.1",
     "typing-extensions>=4.12.2",
     "uv>=0.5.26",
+    "types-toml>=0.10.8.20240310",
 ]
 
+[dependency-groups]
+dev = [
+    "pre-commit>=4.1.0",
+    "pytest-asyncio>=0.25.3",
+    "pytest>=8.3.4",
+    "ruff>=0.9.4",
+]
 
 [project.scripts]
 prefect-cloud = "prefect_cloud:cli.app"
@@ -24,13 +33,6 @@ prefect-cloud = "prefect_cloud:cli.app"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[dependency-groups]
-dev = [
-    "pre-commit>=4.1.0",
-    "pytest-asyncio>=0.25.3",
-    "pytest>=8.3.4",
-]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

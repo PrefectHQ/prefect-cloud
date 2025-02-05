@@ -24,6 +24,7 @@ repos:
           - pydantic>=1.10.0,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0
           - types-cachetools==5.3.0.5
           - types-pyyaml==6.0.12.9
+          - types-toml==0.10.8.20240310
         files: |
           (?x)^(
             src/prefect_cloud/.*
