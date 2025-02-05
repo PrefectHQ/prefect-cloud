@@ -1,5 +1,4 @@
 import typer
-from prefect.cli._utilities import exit_with_error
 from prefect.cli._utilities import exit_with_error as _exit_with_error
 from prefect.cli.root import PrefectTyper
 from prefect.client.base import ServerType, determine_server_type

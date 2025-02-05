@@ -1,25 +1,12 @@
 import sys
-from typing import TypeVar, overload
 
 import readchar
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
-T = TypeVar("T")
 
-
-@overload
-def prompt_select_from_list(prompt: str, options: list[str]) -> str: ...
-
-
-@overload
-def prompt_select_from_list(prompt: str, options: list[tuple[T, str]]) -> T: ...
-
-
-def prompt_select_from_list(
-    prompt: str, options: list[str] | list[tuple[T, str]]
-) -> str | T:
+def prompt_select_from_list(prompt: str, options: list[str]) -> str:
     """
     Given a list of options, display the values to user in a table and prompt them
     to select one.
