@@ -2,6 +2,7 @@
 Utilities for extensions of and operations on Python collections.
 """
 
+import io
 import types
 import warnings
 from collections import OrderedDict
@@ -75,6 +76,23 @@ VT2 = TypeVar("VT2", infer_variance=True)
 R = TypeVar("R", infer_variance=True)
 NestedDict: TypeAlias = dict[KT, Union[VT, "NestedDict[KT, VT]"]]
 HashableT = TypeVar("HashableT", bound=Hashable)
+
+
+def isiterable(obj: Any) -> bool:
+    """
+    Return a boolean indicating if an object is iterable.
+
+    Excludes types that are iterable but typically used as singletons:
+    - str
+    - bytes
+    - IO objects
+    """
+    try:
+        iter(obj)
+    except TypeError:
+        return False
+    else:
+        return not isinstance(obj, (str, bytes, io.IOBase))
 
 
 class StopVisiting(BaseException):

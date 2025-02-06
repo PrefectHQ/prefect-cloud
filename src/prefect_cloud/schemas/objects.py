@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import datetime
+
 from functools import partial
 from typing import Annotated, Any, ClassVar, Optional, Literal
 from uuid import UUID
@@ -14,18 +14,18 @@ from pydantic import (
     field_validator,
     model_serializer,
     model_validator,
+    BaseModel,
 )
 from typing_extensions import TypeVar
 from prefect_cloud.utilities.pydantic import handle_secret_render
-from prefect._internal.schemas.bases import ObjectBaseModel, PrefectBaseModel
-from prefect._internal.schemas.fields import CreatedBy, UpdatedBy
-from prefect._internal.schemas.validators import (
+
+from prefect_cloud.utilities.validators import (
     validate_block_document_name,
     validate_default_queue_id_not_none,
     validate_name_present_on_nonanonymous_blocks,
 )
-from prefect.client.schemas.schedules import SCHEDULE_TYPES
-from prefect.types import (
+from prefect_cloud.schemas.schedules import SCHEDULE_TYPES
+from prefect_cloud.types import (
     KeyValueLabelsField,
     Name,
     NonNegativeInteger,
@@ -33,6 +33,7 @@ from prefect.types import (
 )
 from prefect_cloud.types import DateTime
 from prefect_cloud.utilities.collections import AutoEnum, visit_collection
+from prefect_cloud.schemas.fields import CreatedBy, UpdatedBy
 
 DEFAULT_BLOCK_SCHEMA_VERSION: Literal["non-versioned"] = "non-versioned"
 R = TypeVar("R", default=Any)
@@ -93,7 +94,7 @@ class ConcurrencyLimitStrategy(AutoEnum):
     CANCEL_NEW = AutoEnum.auto()
 
 
-class ConcurrencyOptions(PrefectBaseModel):
+class ConcurrencyOptions(BaseModel):
     """
     Class for storing the concurrency config in database.
     """
@@ -101,7 +102,7 @@ class ConcurrencyOptions(PrefectBaseModel):
     collision_strategy: ConcurrencyLimitStrategy
 
 
-class ConcurrencyLimitConfig(PrefectBaseModel):
+class ConcurrencyLimitConfig(BaseModel):
     """
     Class for storing the concurrency limit config in database.
     """
@@ -110,20 +111,7 @@ class ConcurrencyLimitConfig(PrefectBaseModel):
     collision_strategy: ConcurrencyLimitStrategy = ConcurrencyLimitStrategy.ENQUEUE
 
 
-class CsrfToken(ObjectBaseModel):
-    token: str = Field(
-        default=...,
-        description="The CSRF token",
-    )
-    client: str = Field(
-        default=..., description="The client id associated with the CSRF token"
-    )
-    expiration: DateTime = Field(
-        default=..., description="The expiration time of the CSRF token"
-    )
-
-
-class BlockType(ObjectBaseModel):
+class BlockType(BaseModel):
     """An ORM representation of a block type"""
 
     name: Name = Field(default=..., description="A block type's name")
@@ -147,7 +135,7 @@ class BlockType(ObjectBaseModel):
     )
 
 
-class BlockSchema(ObjectBaseModel):
+class BlockSchema(BaseModel):
     """A representation of a block schema."""
 
     checksum: str = Field(default=..., description="The block schema's unique checksum")
@@ -168,7 +156,7 @@ class BlockSchema(ObjectBaseModel):
     )
 
 
-class BlockDocument(ObjectBaseModel):
+class BlockDocument(BaseModel):
     """An ORM representation of a block document."""
 
     name: Optional[Name] = Field(
@@ -221,7 +209,7 @@ class BlockDocument(ObjectBaseModel):
         return handler(self)
 
 
-class Flow(ObjectBaseModel):
+class Flow(BaseModel):
     """An ORM representation of flow data."""
 
     name: Name = Field(
@@ -235,7 +223,7 @@ class Flow(ObjectBaseModel):
     labels: KeyValueLabelsField
 
 
-class DeploymentSchedule(ObjectBaseModel):
+class DeploymentSchedule(BaseModel):
     deployment_id: Optional[UUID] = Field(
         default=None,
         description="The deployment id associated with this schedule.",
@@ -252,7 +240,7 @@ class DeploymentSchedule(ObjectBaseModel):
     )
 
 
-class Deployment(ObjectBaseModel):
+class Deployment(BaseModel):
     """An ORM representation of deployment data."""
 
     name: Name = Field(default=..., description="The name of the deployment.")
@@ -350,7 +338,7 @@ class Deployment(ObjectBaseModel):
     )
 
 
-class ConcurrencyLimit(ObjectBaseModel):
+class ConcurrencyLimit(BaseModel):
     """An ORM representation of a concurrency limit."""
 
     tag: str = Field(
@@ -363,7 +351,7 @@ class ConcurrencyLimit(ObjectBaseModel):
     )
 
 
-class WorkPool(ObjectBaseModel):
+class WorkPool(BaseModel):
     """An ORM representation of a work pool"""
 
     name: Name = Field(
@@ -409,36 +397,14 @@ class WorkPool(ObjectBaseModel):
         return validate_default_queue_id_not_none(v)
 
 
-class Worker(ObjectBaseModel):
-    """An ORM representation of a worker"""
-
-    name: str = Field(description="The name of the worker.")
-    work_pool_id: UUID = Field(
-        description="The work pool with which the queue is associated."
-    )
-    last_heartbeat_time: Optional[datetime.datetime] = Field(
-        default=None, description="The last time the worker process sent a heartbeat."
-    )
-    heartbeat_interval_seconds: Optional[int] = Field(
-        default=None,
-        description=(
-            "The number of seconds to expect between heartbeats sent by the worker."
-        ),
-    )
-    status: WorkerStatus = Field(
-        WorkerStatus.OFFLINE,
-        description="Current status of the worker.",
-    )
-
-
-class Integration(PrefectBaseModel):
+class Integration(BaseModel):
     """A representation of an installed Prefect integration."""
 
     name: str = Field(description="The name of the Prefect integration.")
     version: str = Field(description="The version of the Prefect integration.")
 
 
-class WorkerMetadata(PrefectBaseModel):
+class WorkerMetadata(BaseModel):
     """
     Worker metadata.
 

@@ -1,15 +1,15 @@
-from typing import Any, ClassVar, Optional
+from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import ConfigDict, Field
+from pydantic import Field, BaseModel
 
-import prefect.client.schemas.objects as objects
-from prefect._internal.schemas.bases import ObjectBaseModel, PrefectBaseModel
-from prefect._internal.schemas.fields import CreatedBy, UpdatedBy
-from prefect.types import DateTime, KeyValueLabelsField
+import prefect_cloud.schemas.objects as objects
+
+from prefect_cloud.schemas.fields import CreatedBy, UpdatedBy
+from prefect_cloud.types import DateTime, KeyValueLabelsField
 
 
-class GlobalConcurrencyLimitResponse(ObjectBaseModel):
+class GlobalConcurrencyLimitResponse(BaseModel):
     """
     A response object for global concurrency limits.
     """
@@ -28,7 +28,7 @@ class GlobalConcurrencyLimitResponse(ObjectBaseModel):
     )
 
 
-class DeploymentResponse(ObjectBaseModel):
+class DeploymentResponse(BaseModel):
     name: str = Field(default=..., description="The name of the deployment.")
     version: Optional[str] = Field(
         default=None, description="An optional version for the deployment."
@@ -144,11 +144,3 @@ class DeploymentResponse(ObjectBaseModel):
         default=None,
         description="Current status of the deployment.",
     )
-
-
-class WorkerFlowRunResponse(PrefectBaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(arbitrary_types_allowed=True)
-
-    work_pool_id: UUID
-    work_queue_id: UUID
-    flow_run: objects.FlowRun

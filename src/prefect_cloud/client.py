@@ -12,38 +12,31 @@ from prefect_cloud.schemas.actions import (
 )
 from prefect_cloud.schemas.filters import WorkPoolFilter, WorkPoolFilterType
 from prefect_cloud.utilities.exception import ObjectNotFound
-from prefect.settings import (
-    PREFECT_API_KEY,
-    PREFECT_API_URL,
-)
+
 from prefect.utilities.callables import ParameterSchema
 from prefect.workers.utilities import (
     get_default_base_job_template_for_infrastructure_type,
 )
 from prefect_cloud.settings import settings
-from prefect_cloud.clients.http import PrefectHttpxAsyncClient
 from prefect_cloud.clients.work_pools import WorkPoolAsyncClient
 from prefect_cloud.clients.deployments import DeploymentAsyncClient
 from prefect_cloud.clients.flow import FlowAsyncClient
 from prefect_cloud.clients.blocks import BlocksDocumentAsyncClient
+from prefect_cloud.utilities.collections import AutoEnum
 
 PREFECT_MANAGED = "prefect:managed"
-
-
-# TODO: temporary remove
-def get_cloud_api_url():
-    url = PREFECT_API_URL.value()
-    if url.startswith("https://api.prefect.dev/api"):
-        return "https://api.prefect.dev/api"
-    elif url.startswith("https://api.stg.prefect.dev/api"):
-        return "https://api.stg.prefect.dev/api"
-    else:
-        return "https://api.prefect.cloud/api"
 
 
 HTTP_METHODS: TypeAlias = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
 
 PREFECT_API_REQUEST_TIMEOUT = 60.0
+
+
+class ServerType(AutoEnum):
+    EPHEMERAL = AutoEnum.auto()
+    SERVER = AutoEnum.auto()
+    CLOUD = AutoEnum.auto()
+    UNCONFIGURED = AutoEnum.auto()
 
 
 class PrefectCloudClient(
@@ -57,8 +50,6 @@ class PrefectCloudClient(
         httpx_settings.setdefault("headers", {"Authorization": f"Bearer {api_key}"})
         httpx_settings.setdefault("base_url", api_url)
 
-                
-                
         self._context_stack: int = 0
         self._exit_stack = AsyncExitStack()
 
@@ -94,14 +85,13 @@ class PrefectCloudClient(
                 pool=PREFECT_API_REQUEST_TIMEOUT,
             ),
         )
-        self._client = PrefectHttpxAsyncClient(**httpx_settings)
+        self._client = httpx.AsyncClient(**httpx_settings)
         self._loop = None
-
 
         # See https://www.python-httpx.org/advanced/#custom-transports
         #
         # If we're using an HTTP/S client (not the ephemeral client), adjust the
-        # transport to add retries _after_ it is instantiated. If we alter the transport
+        # transport to adds retries _after_ it is instantiated. If we alter the transport
         # before instantiation, the transport will not be aware of proxies unless we
         # reproduce all of the logic to make it so.
         #
@@ -118,8 +108,6 @@ class PrefectCloudClient(
                     pool = getattr(server_transport, "_pool", None)
                     if isinstance(pool, httpcore.AsyncConnectionPool):
                         setattr(pool, "_retries", 3)
-
-
 
     async def ensure_managed_work_pool(
         self, name: str = settings.default_managed_work_pool_name
@@ -232,8 +220,6 @@ class PrefectCloudClient(
 
         # Enter a lifespan context if using an ephemeral application.
         # See https://github.com/encode/httpx/issues/350
-      
-
 
         # Enter the httpx client's context
         await self._exit_stack.enter_async_context(self._client)
@@ -262,8 +248,9 @@ class PrefectCloudClient(
     def __exit__(self, *_: object) -> NoReturn:
         assert False, "This should never be called but must be defined for __enter__"
 
-def get_prefect_cloud_client():
+
+def get_prefect_cloud_client(api_url: str, api_key: str):
     return PrefectCloudClient(
-        api=PREFECT_API_URL.value(),
-        api_key=PREFECT_API_KEY.value(),
+        api_url=api_url,
+        api_key=api_key,
     )

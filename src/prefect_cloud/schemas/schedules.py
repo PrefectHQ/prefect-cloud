@@ -8,17 +8,24 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Optional, Union
 import dateutil
 import dateutil.rrule
 import dateutil.tz
-from pydantic import AfterValidator, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+    BaseModel,
+)
 from typing_extensions import TypeAlias, TypeGuard
 
-from prefect._internal.schemas.bases import PrefectBaseModel
-from prefect._internal.schemas.validators import (
+
+from prefect_cloud.utilities.validators import (
     default_anchor_date,
     default_timezone,
     validate_cron_string,
     validate_rrule_string,
 )
-from prefect.types._datetime import Date, DateTime
+from prefect_cloud.types import Date, DateTime
 
 MAX_ITERATIONS = 1000
 # approx. 1 years worth of RDATEs + buffer
@@ -42,7 +49,7 @@ def is_valid_timezone(v: str) -> bool:
     return v in pytz.all_timezones_set
 
 
-class IntervalSchedule(PrefectBaseModel):
+class IntervalSchedule(BaseModel):
     """
     A schedule formed by adding `interval` increments to an `anchor_date`. If no
     `anchor_date` is supplied, the current UTC time is used.  If a
@@ -96,7 +103,7 @@ class IntervalSchedule(PrefectBaseModel):
         ) -> None: ...
 
 
-class CronSchedule(PrefectBaseModel):
+class CronSchedule(BaseModel):
     """
     Cron schedule
 
@@ -164,7 +171,7 @@ def _rdates(
     return getattr(rrule, name, [])
 
 
-class RRuleSchedule(PrefectBaseModel):
+class RRuleSchedule(BaseModel):
     """
     RRule schedule, based on the iCalendar standard
     ([RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)) as
@@ -320,7 +327,7 @@ class RRuleSchedule(PrefectBaseModel):
         raise ValueError(f'Invalid timezone: "{v}"')
 
 
-class NoSchedule(PrefectBaseModel):
+class NoSchedule(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
 
 

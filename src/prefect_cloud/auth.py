@@ -2,7 +2,7 @@ import json
 import socket
 import threading
 import webbrowser
-from contextlib import asynccontextmanager,contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Queue
@@ -85,16 +85,15 @@ def logout():
 async def cloud_client(api_key: str) -> AsyncGenerator[PrefectCloudClient, None]:
     """Creates a client for the Prefect Cloud API"""
 
-
     async with PrefectCloudClient(api_url=CLOUD_API_URL, api_key=api_key) as client:
         yield client
 
 
-def get_cloud_urls_or_login() -> tuple[str, str, str]:
+async def get_cloud_urls_or_login() -> tuple[str, str, str]:
     """Gets the cloud UI URL, API URL, and API key"""
     profile = get_cloud_profile()
     if not profile:
-        login()
+        await login()
 
     profile = get_cloud_profile()
     if not profile:
@@ -128,10 +127,10 @@ def get_api_key_or_login() -> str:
     return api_key
 
 
-def key_is_valid(api_key: str) -> bool:
+async def key_is_valid(api_key: str) -> bool:
     """Checks if the given API key is valid"""
-    with cloud_client(api_key) as client:
-        response = client.get("/me/")
+    async with cloud_client(api_key) as client:
+        response = await client.request("GET", "/me/")
         return response.status_code == 200
 
 

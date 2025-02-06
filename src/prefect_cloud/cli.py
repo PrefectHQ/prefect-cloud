@@ -11,7 +11,6 @@ from rich.text import Text
 
 from prefect_cloud import auth
 from prefect_cloud.client import (
-    get_cloud_api_url,
     get_prefect_cloud_client,
 )
 from prefect_cloud.dependencies import get_dependencies
@@ -84,7 +83,7 @@ async def deploy(
         help="Optional credentials if code is in a private repository. ",
     ),
 ):
-    ensure_prefect_cloud()
+    _, api_url, api_key = await auth.get_cloud_urls_or_login()
 
     with Progress(
         SpinnerColumn(),
@@ -96,7 +95,7 @@ async def deploy(
         except ValueError as e:
             exit_with_error(str(e), progress=progress)
 
-        async with get_prefect_cloud_client() as client:
+        async with get_prefect_cloud_client(api_url, api_key) as client:
             task = progress.add_task("Inspecting code...", total=None)
 
             github_ref = GitHubFileRef.from_url(file)
@@ -144,7 +143,7 @@ async def deploy(
                 parameter_schema,
                 job_variables={
                     "pip_packages": get_dependencies(dependencies or []),
-                    "env": {"PREFECT_CLOUD_API_URL": get_cloud_api_url()} | env_vars,
+                    "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
                 },
             )
 
@@ -186,12 +185,12 @@ def logout():
 
 
 @app.command(aliases=["whoami", "me"])
-def who_am_i():
-    ui_url, api_url, api_key = auth.get_cloud_urls_or_login()
+async def who_am_i() -> None:
+    ui_url, api_url, api_key = await auth.get_cloud_urls_or_login()
 
-    me = auth.me(api_key)
-    accounts = auth.get_accounts(api_key)
-    workspaces = auth.get_workspaces(api_key)
+    me = await auth.me(api_key)
+    accounts = await auth.get_accounts(api_key)
+    workspaces = await auth.get_workspaces(api_key)
 
     table = Table(title="User", show_header=False)
     table.add_column("Property")

@@ -7,14 +7,15 @@ from typing import Callable
 from uuid import uuid4
 
 import jsonschema
-from pydantic import Field, field_validator, model_validator, HttpUrl
+from pydantic import Field, field_validator, model_validator, HttpUrl, BaseModel
 
 from prefect_cloud.schemas.objects import (
     ConcurrencyOptions,
     DEFAULT_BLOCK_SCHEMA_VERSION,
 )
-from prefect_cloud.schemas.base import ActionBaseModel
-from prefect._internal.schemas.validators import (
+
+
+from prefect_cloud.utilities.validators import (
     convert_to_strings,
     remove_old_deployment_fields,
     validate_block_document_name,
@@ -34,12 +35,12 @@ from prefect_cloud.types import (
     PositiveInteger,
 )
 
-from prefect.utilities.pydantic import get_class_fields_only
+from prefect_cloud.utilities.pydantic import get_class_fields_only
 
 PREFECT_DEPLOYMENT_SCHEDULE_MAX_SCHEDULED_RUNS = 50
 
 
-class FlowCreate(ActionBaseModel):
+class FlowCreate(BaseModel):
     """Data used by the Prefect REST API to create a flow."""
 
     name: str = Field(
@@ -54,17 +55,7 @@ class FlowCreate(ActionBaseModel):
     labels: KeyValueLabelsField = Field(default_factory=dict)
 
 
-class FlowUpdate(ActionBaseModel):
-    """Data used by the Prefect REST API to update a flow."""
-
-    tags: list[str] = Field(
-        default_factory=list,
-        description="A list of flow tags",
-        examples=[["tag-1", "tag-2"]],
-    )
-
-
-class DeploymentScheduleCreate(ActionBaseModel):
+class DeploymentScheduleCreate(BaseModel):
     schedule: SCHEDULE_TYPES = Field(
         default=..., description="The schedule for the deployment."
     )
@@ -94,7 +85,7 @@ class DeploymentScheduleCreate(ActionBaseModel):
         )
 
 
-class DeploymentScheduleUpdate(ActionBaseModel):
+class DeploymentScheduleUpdate(BaseModel):
     schedule: Optional[SCHEDULE_TYPES] = Field(
         default=None, description="The schedule for the deployment."
     )
@@ -115,7 +106,7 @@ class DeploymentScheduleUpdate(ActionBaseModel):
         )
 
 
-class DeploymentCreate(ActionBaseModel):
+class DeploymentCreate(BaseModel):
     """Data used by the Prefect REST API to create a deployment."""
 
     @model_validator(mode="before")
@@ -197,7 +188,7 @@ class DeploymentCreate(ActionBaseModel):
             jsonschema.validate(self.job_variables, variables_schema)
 
 
-class DeploymentUpdate(ActionBaseModel):
+class DeploymentUpdate(BaseModel):
     """Data used by the Prefect REST API to update a deployment."""
 
     @model_validator(mode="before")
@@ -269,47 +260,7 @@ class DeploymentUpdate(ActionBaseModel):
             jsonschema.validate(self.job_variables, variables_schema)
 
 
-class ConcurrencyLimitCreate(ActionBaseModel):
-    """Data used by the Prefect REST API to create a concurrency limit."""
-
-    tag: str = Field(
-        default=..., description="A tag the concurrency limit is applied to."
-    )
-    concurrency_limit: int = Field(default=..., description="The concurrency limit.")
-
-
-class ConcurrencyLimitV2Create(ActionBaseModel):
-    """Data used by the Prefect REST API to create a v2 concurrency limit."""
-
-    active: bool = Field(
-        default=True, description="Whether the concurrency limit is active."
-    )
-    name: Name = Field(default=..., description="The name of the concurrency limit.")
-    limit: NonNegativeInteger = Field(default=..., description="The concurrency limit.")
-    active_slots: NonNegativeInteger = Field(
-        default=0, description="The number of active slots."
-    )
-    denied_slots: NonNegativeInteger = Field(
-        default=0, description="The number of denied slots."
-    )
-    slot_decay_per_second: NonNegativeFloat = Field(
-        default=0,
-        description="The decay rate for active slots when used as a rate limit.",
-    )
-
-
-class ConcurrencyLimitV2Update(ActionBaseModel):
-    """Data used by the Prefect REST API to update a v2 concurrency limit."""
-
-    active: Optional[bool] = Field(default=None)
-    name: Optional[Name] = Field(default=None)
-    limit: Optional[NonNegativeInteger] = Field(default=None)
-    active_slots: Optional[NonNegativeInteger] = Field(default=None)
-    denied_slots: Optional[NonNegativeInteger] = Field(default=None)
-    slot_decay_per_second: Optional[NonNegativeFloat] = Field(default=None)
-
-
-class BlockTypeCreate(ActionBaseModel):
+class BlockTypeCreate(BaseModel):
     """Data used by the Prefect REST API to create a block type."""
 
     name: str = Field(default=..., description="A block type's name")
@@ -333,7 +284,7 @@ class BlockTypeCreate(ActionBaseModel):
     _validate_slug_format = field_validator("slug")(validate_block_type_slug)
 
 
-class BlockTypeUpdate(ActionBaseModel):
+class BlockTypeUpdate(BaseModel):
     """Data used by the Prefect REST API to update a block type."""
 
     logo_url: Optional[HttpUrl] = Field(default=None)
@@ -346,7 +297,7 @@ class BlockTypeUpdate(ActionBaseModel):
         return get_class_fields_only(cls)
 
 
-class BlockSchemaCreate(ActionBaseModel):
+class BlockSchemaCreate(BaseModel):
     """Data used by the Prefect REST API to create a block schema."""
 
     fields: dict[str, Any] = Field(
@@ -363,7 +314,7 @@ class BlockSchemaCreate(ActionBaseModel):
     )
 
 
-class BlockDocumentCreate(ActionBaseModel):
+class BlockDocumentCreate(BaseModel):
     """Data used by the Prefect REST API to create a block document."""
 
     name: Optional[Name] = Field(
@@ -395,7 +346,7 @@ class BlockDocumentCreate(ActionBaseModel):
         return validate_name_present_on_nonanonymous_blocks(values)
 
 
-class BlockDocumentUpdate(ActionBaseModel):
+class BlockDocumentUpdate(BaseModel):
     """Data used by the Prefect REST API to update a block document."""
 
     block_schema_id: Optional[UUID] = Field(
@@ -410,7 +361,7 @@ class BlockDocumentUpdate(ActionBaseModel):
     )
 
 
-class BlockDocumentReferenceCreate(ActionBaseModel):
+class BlockDocumentReferenceCreate(BaseModel):
     """Data used to create block document reference."""
 
     id: UUID = Field(default_factory=uuid4)
@@ -425,7 +376,7 @@ class BlockDocumentReferenceCreate(ActionBaseModel):
     )
 
 
-class WorkPoolCreate(ActionBaseModel):
+class WorkPoolCreate(BaseModel):
     """Data used by the Prefect REST API to create a work pool."""
 
     name: NonEmptyishName = Field(
@@ -448,7 +399,7 @@ class WorkPoolCreate(ActionBaseModel):
     )
 
 
-class WorkPoolUpdate(ActionBaseModel):
+class WorkPoolUpdate(BaseModel):
     """Data used by the Prefect REST API to update a work pool."""
 
     description: Optional[str] = Field(default=None)
@@ -457,7 +408,7 @@ class WorkPoolUpdate(ActionBaseModel):
     concurrency_limit: Optional[int] = Field(default=None)
 
 
-class WorkQueueCreate(ActionBaseModel):
+class WorkQueueCreate(BaseModel):
     """Data used by the Prefect REST API to create a work queue."""
 
     name: str = Field(default=..., description="The name of the work queue.")
@@ -478,7 +429,7 @@ class WorkQueueCreate(ActionBaseModel):
     )
 
 
-class WorkQueueUpdate(ActionBaseModel):
+class WorkQueueUpdate(BaseModel):
     """Data used by the Prefect REST API to update a work queue."""
 
     name: Optional[str] = Field(default=None)
@@ -493,7 +444,7 @@ class WorkQueueUpdate(ActionBaseModel):
     last_polled: Optional[DateTime] = Field(default=None)
 
 
-class GlobalConcurrencyLimitCreate(ActionBaseModel):
+class GlobalConcurrencyLimitCreate(BaseModel):
     """Data used by the Prefect REST API to create a global concurrency limit."""
 
     name: Name = Field(description="The name of the global concurrency limit.")
@@ -520,7 +471,7 @@ class GlobalConcurrencyLimitCreate(ActionBaseModel):
     )
 
 
-class GlobalConcurrencyLimitUpdate(ActionBaseModel):
+class GlobalConcurrencyLimitUpdate(BaseModel):
     """Data used by the Prefect REST API to update a global concurrency limit."""
 
     name: Optional[Name] = Field(default=None)

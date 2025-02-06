@@ -3,14 +3,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Union
 
 from httpx import HTTPStatusError, RequestError
-
+from pydantic import TypeAdapter
 from prefect_cloud.utilities.exception import ObjectNotFound
 from prefect_cloud.clients.base import BaseAsyncClient
+from prefect_cloud.utilities.generics import validate_list
 
 if TYPE_CHECKING:
     from uuid import UUID
     from prefect_cloud.schemas.actions import (
-        DeploymentCreate,
         DeploymentScheduleCreate,
         DeploymentUpdate,
     )
@@ -158,25 +158,6 @@ class DeploymentAsyncClient(BaseAsyncClient):
             json=deployment.model_dump(mode="json", exclude_unset=True),
         )
 
-    async def _create_deployment_from_schema(
-        self, schema: "DeploymentCreate"
-    ) -> "UUID":
-        """
-        Create a deployment from a prepared `DeploymentCreate` schema.
-        """
-        from uuid import UUID
-
-        # TODO: We are likely to remove this method once we have considered the
-        #       packaging interface for deployments further.
-        response = await self.request(
-            "POST", "/deployments/", json=schema.model_dump(mode="json")
-        )
-        deployment_id = response.json().get("id")
-        if not deployment_id:
-            raise RequestError(f"Malformed response: {response}")
-
-        return UUID(deployment_id)
-
     async def read_deployment(
         self,
         deployment_id: Union["UUID", str],
@@ -211,7 +192,7 @@ class DeploymentAsyncClient(BaseAsyncClient):
                 raise ObjectNotFound(http_exc=e) from e
             else:
                 raise
-        return DeploymentResponse.model_validate(response.json())
+        return TypeAdapter(DeploymentResponse).validate_json(response.json())
 
     async def read_deployment_by_name(
         self,
@@ -312,7 +293,7 @@ class DeploymentAsyncClient(BaseAsyncClient):
         }
 
         response = await self.request("POST", "/deployments/filter", json=body)
-        return DeploymentResponse.model_validate_list(response.json())
+        return validate_list(DeploymentResponse, response.json())
 
     async def delete_deployment(
         self,
@@ -376,7 +357,7 @@ class DeploymentAsyncClient(BaseAsyncClient):
             path_params={"id": deployment_id},
             json=json,
         )
-        return DeploymentSchedule.model_validate_list(response.json())
+        return validate_list(DeploymentSchedule, response.json())
 
     async def read_deployment_schedules(
         self,
@@ -404,7 +385,7 @@ class DeploymentAsyncClient(BaseAsyncClient):
                 raise ObjectNotFound(http_exc=e) from e
             else:
                 raise
-        return DeploymentSchedule.model_validate_list(response.json())
+        return validate_list(DeploymentSchedule, response.json())
 
     async def update_deployment_schedule(
         self,
@@ -422,7 +403,7 @@ class DeploymentAsyncClient(BaseAsyncClient):
             active: whether or not the schedule should be active
             schedule: the cron, rrule, or interval schedule this deployment schedule should use
         """
-        from prefect.client.schemas.actions import DeploymentScheduleUpdate
+        from prefect_cloud.schemas.actions import DeploymentScheduleUpdate
 
         kwargs: dict[str, Any] = {}
         if active is not None:

@@ -10,9 +10,7 @@ from prefect_cloud.utilities.exception import ObjectNotFound
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from prefect_cloud.schemas.objects import (
-        Flow,
-    )
+    from prefect_cloud.schemas.objects import Flow
 
 
 class FlowAsyncClient(BaseAsyncClient):
@@ -29,7 +27,7 @@ class FlowAsyncClient(BaseAsyncClient):
         Returns:
             the ID of the flow in the backend
         """
-        from prefect.client.schemas.actions import FlowCreate
+        from prefect_cloud.schemas.actions import FlowCreate
 
         flow_data = FlowCreate(name=flow_name)
         response = await self.request(

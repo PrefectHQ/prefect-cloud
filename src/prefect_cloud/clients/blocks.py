@@ -6,6 +6,7 @@ from httpx import HTTPStatusError
 
 from prefect_cloud.clients.base import BaseAsyncClient
 from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
+from prefect_cloud.utilities.generics import validate_list
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -175,7 +176,7 @@ class BlocksDocumentAsyncClient(BaseAsyncClient):
         )
         from prefect_cloud.schemas.objects import BlockDocument
 
-        return BlockDocument.model_validate_list(response.json())
+        return validate_list(BlockDocument, response.json())
 
     async def read_block_document_by_name(
         self,
@@ -267,4 +268,4 @@ class BlocksDocumentAsyncClient(BaseAsyncClient):
             raise
         from prefect_cloud.schemas.objects import BlockSchema
 
-        return next(iter(BlockSchema.model_validate_list(response.json())), None)
+        return next(iter(validate_list(BlockSchema, response.json())), None)
