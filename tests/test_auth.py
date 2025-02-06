@@ -16,6 +16,7 @@ from prefect_cloud.auth import (
     get_accounts,
     get_cloud_profile,
     get_cloud_urls_or_login,
+    get_cloud_urls_without_login,
     get_workspaces,
     key_is_valid,
     login,
@@ -417,8 +418,18 @@ def test_get_cloud_urls_or_login_with_no_profile_failed_login(mock_profiles_path
         mock_login.assert_called_once()
 
 
-def test_get_cloud_urls_or_login_with_profile_missing_api_url(mock_profiles_path: Path):
-    """get_cloud_urls_or_login() should raise error when profile has no API URL."""
+def test_get_cloud_urls_without_login_with_no_profile(mock_profiles_path: Path):
+    """get_cloud_urls_without_login() should return None values when no profile exists."""
+    ui_url, api_url, api_key = get_cloud_urls_without_login()
+    assert ui_url is None
+    assert api_url is None
+    assert api_key is None
+
+
+def test_get_cloud_urls_without_login_with_profile_missing_api_url(
+    mock_profiles_path: Path,
+):
+    """get_cloud_urls_without_login() should return None values when profile has no API URL."""
     profile = {
         "profiles": {
             "prefect-cloud": {
@@ -429,12 +440,16 @@ def test_get_cloud_urls_or_login_with_profile_missing_api_url(mock_profiles_path
     mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
     mock_profiles_path.write_text(toml.dumps(profile))
 
-    with pytest.raises(ValueError, match="No API URL found"):
-        get_cloud_urls_or_login()
+    ui_url, api_url, api_key = get_cloud_urls_without_login()
+    assert ui_url is None
+    assert api_url is None
+    assert api_key is None
 
 
-def test_get_cloud_urls_or_login_with_profile_missing_api_key(mock_profiles_path: Path):
-    """get_cloud_urls_or_login() should raise error when profile has no API key."""
+def test_get_cloud_urls_without_login_with_profile_missing_api_key(
+    mock_profiles_path: Path,
+):
+    """get_cloud_urls_without_login() should return None values when profile has no API key."""
     profile = {
         "profiles": {
             "prefect-cloud": {
@@ -445,8 +460,10 @@ def test_get_cloud_urls_or_login_with_profile_missing_api_key(mock_profiles_path
     mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
     mock_profiles_path.write_text(toml.dumps(profile))
 
-    with pytest.raises(ValueError, match="No API key found"):
-        get_cloud_urls_or_login()
+    ui_url, api_url, api_key = get_cloud_urls_without_login()
+    assert ui_url is None
+    assert api_url is None
+    assert api_key is None
 
 
 @pytest.mark.parametrize(
