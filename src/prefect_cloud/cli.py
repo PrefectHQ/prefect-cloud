@@ -15,7 +15,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
 
-from prefect_cloud import auth, deployments
+from prefect_cloud import auth, completions, deployments
 from prefect_cloud.client import get_prefect_cloud_client
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import (
@@ -165,6 +165,7 @@ async def run(
     deployment: str = typer.Argument(
         ...,
         help="The deployment to run (either its name or ID).",
+        autocompletion=completions.complete_deployment,
     ),
 ):
     ui_url, _, _ = auth.get_cloud_urls_or_login()
@@ -235,6 +236,7 @@ async def schedule(
     deployment: str = typer.Argument(
         ...,
         help="The deployment to schedule (either its name or ID).",
+        autocompletion=completions.complete_deployment,
     ),
     schedule: str = typer.Argument(
         ...,
@@ -249,6 +251,7 @@ async def pause(
     deployment: str = typer.Argument(
         ...,
         help="The deployment to pause (either its name or ID).",
+        autocompletion=completions.complete_deployment,
     ),
 ):
     await deployments.pause(deployment)
@@ -259,6 +262,7 @@ async def resume(
     deployment: str = typer.Argument(
         ...,
         help="The deployment to resume (either its name or ID).",
+        autocompletion=completions.complete_deployment,
     ),
 ):
     await deployments.resume(deployment)

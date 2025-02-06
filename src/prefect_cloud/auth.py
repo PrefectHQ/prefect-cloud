@@ -93,17 +93,26 @@ def cloud_client(api_key: str) -> Generator[httpx.Client, None, None]:
 
 def get_cloud_urls_or_login() -> tuple[str, str, str]:
     """Gets the cloud UI URL, API URL, and API key"""
-    profile = get_cloud_profile()
-    if not profile:
+    ui_url, api_url, api_key = get_cloud_urls_without_login()
+    if not ui_url or not api_url or not api_key:
         login()
 
+    ui_url, api_url, api_key = get_cloud_urls_without_login()
+    if not ui_url or not api_url or not api_key:
+        raise ValueError("No cloud profile found")
+
+    return ui_url, api_url, api_key
+
+
+def get_cloud_urls_without_login() -> tuple[str | None, str | None, str | None]:
+    """Gets the cloud UI URL, API URL, and API key"""
     profile = get_cloud_profile()
     if not profile:
-        raise ValueError("No cloud profile found")
+        return None, None, None
 
     api_url: str | None = profile.get("PREFECT_API_URL")
     if not api_url:
-        raise ValueError("No API URL found")
+        return None, None, None
 
     ui_url = (
         api_url.replace("https://api.", "https://app.")
@@ -114,7 +123,7 @@ def get_cloud_urls_or_login() -> tuple[str, str, str]:
 
     api_key = profile.get("PREFECT_API_KEY")
     if not api_key:
-        raise ValueError("No API key found")
+        return None, None, None
 
     return ui_url, api_url, api_key
 
