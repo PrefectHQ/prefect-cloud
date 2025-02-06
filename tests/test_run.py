@@ -1,0 +1,132 @@
+from uuid import UUID, uuid4
+
+import prefect.main  # noqa: F401
+import pytest
+import respx
+from httpx import Response
+from prefect.client.schemas.objects import FlowRun
+from prefect.client.schemas.responses import DeploymentResponse
+from prefect.exceptions import ObjectNotFound
+
+from prefect_cloud import deployments
+
+
+@pytest.fixture
+def account() -> UUID:
+    return UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
+
+@pytest.fixture
+def workspace() -> UUID:
+    return UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+
+@pytest.fixture
+def api_url(account: UUID, workspace: UUID) -> str:
+    return f"https://api.prefect.cloud/api/accounts/{account}/workspaces/{workspace}"
+
+
+@pytest.fixture(autouse=True)
+def mock_get_cloud_urls_or_login(
+    monkeypatch: pytest.MonkeyPatch, account: UUID, workspace: UUID, api_url: str
+):
+    def mock_urls():
+        return (
+            f"https://app.prefect.cloud/account/{account}/workspace/{workspace}",
+            api_url,
+            "test_api_key",
+        )
+
+    monkeypatch.setattr("prefect_cloud.auth.get_cloud_urls_or_login", mock_urls)
+
+
+@pytest.fixture
+def mock_deployment() -> DeploymentResponse:
+    return DeploymentResponse(
+        id=uuid4(),
+        flow_id=uuid4(),
+        name="test-deployment",
+        schedules=[],
+        is_schedule_active=True,
+        created=None,
+        updated=None,
+    )
+
+
+@pytest.fixture
+def mock_flow_run() -> FlowRun:
+    return FlowRun(
+        id=uuid4(),
+        deployment_id=uuid4(),
+        flow_id=uuid4(),
+        name="test-run",
+        state_type="SCHEDULED",
+        expected_start_time=None,
+        created=None,
+        updated=None,
+    )
+
+
+async def test_run_deployment_by_id(
+    cloud_api: respx.Router,
+    mock_deployment: DeploymentResponse,
+    mock_flow_run: FlowRun,
+    api_url: str,
+):
+    """run() should create a flow run when given a deployment ID"""
+    mock_flow_run.deployment_id = mock_deployment.id
+
+    cloud_api.get(f"{api_url}/deployments/{mock_deployment.id}").mock(
+        return_value=Response(200, json=mock_deployment.model_dump(mode="json"))
+    )
+    cloud_api.post(f"{api_url}/deployments/{mock_deployment.id}/flow_runs").mock(
+        return_value=Response(201, json=mock_flow_run.model_dump(mode="json"))
+    )
+    cloud_api.post(f"{api_url}/deployments/{mock_deployment.id}/create_flow_run").mock(
+        return_value=Response(201, json=mock_flow_run.model_dump(mode="json"))
+    )
+
+    result = await deployments.run(str(mock_deployment.id))
+
+    assert result.id == mock_flow_run.id
+    assert result.deployment_id == mock_deployment.id
+
+
+async def test_run_deployment_by_name(
+    cloud_api: respx.Router,
+    mock_deployment: DeploymentResponse,
+    mock_flow_run: FlowRun,
+    api_url: str,
+):
+    """run() should create a flow run when given a deployment name"""
+    mock_flow_run.deployment_id = mock_deployment.id
+    deployment_name = "my-flow/my-deployment"
+
+    cloud_api.get(f"{api_url}/deployments/name/{deployment_name}").mock(
+        return_value=Response(200, json=mock_deployment.model_dump(mode="json"))
+    )
+    cloud_api.post(f"{api_url}/deployments/{mock_deployment.id}/flow_runs").mock(
+        return_value=Response(201, json=mock_flow_run.model_dump(mode="json"))
+    )
+    cloud_api.post(f"{api_url}/deployments/{mock_deployment.id}/create_flow_run").mock(
+        return_value=Response(201, json=mock_flow_run.model_dump(mode="json"))
+    )
+
+    result = await deployments.run(deployment_name)
+
+    assert result.id == mock_flow_run.id
+    assert result.deployment_id == mock_deployment.id
+
+
+async def test_run_deployment_not_found(
+    cloud_api: respx.Router,
+    api_url: str,
+):
+    """run() should raise an appropriate error when the deployment is not found"""
+    deployment_id = uuid4()
+    cloud_api.get(f"{api_url}/deployments/{deployment_id}").mock(
+        return_value=Response(404, json={"detail": "Deployment not found"})
+    )
+
+    with pytest.raises(ObjectNotFound):
+        await deployments.run(str(deployment_id))

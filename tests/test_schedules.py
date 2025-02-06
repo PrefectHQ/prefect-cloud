@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+import prefect.main  # noqa: F401
 import pytest
 import respx
 from httpx import Response
@@ -9,12 +10,6 @@ from prefect.client.schemas.responses import DeploymentResponse
 from prefect.client.schemas.schedules import CronSchedule
 
 from prefect_cloud import deployments
-
-# isort: split
-
-from prefect.results import ResultRecordMetadata  # noqa: F401
-
-FlowRun.model_rebuild()
 
 
 @pytest.fixture

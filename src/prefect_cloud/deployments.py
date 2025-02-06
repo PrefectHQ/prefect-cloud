@@ -64,6 +64,13 @@ async def _get_deployment(deployment_: str) -> DeploymentResponse:
             return await client.read_deployment(deployment_id)
 
 
+async def run(deployment_: str) -> FlowRun:
+    deployment = await _get_deployment(deployment_)
+
+    async with get_prefect_cloud_client() as client:
+        return await client.create_flow_run_from_deployment(deployment.id)
+
+
 async def schedule(deployment_: str, schedule: str):
     deployment = await _get_deployment(deployment_)
 

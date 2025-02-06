@@ -1,3 +1,4 @@
+from logging import getLogger
 from typing import Any
 from uuid import UUID
 
@@ -7,11 +8,11 @@ from prefect.client.schemas.actions import (
     BlockDocumentUpdate,
     WorkPoolCreate,
 )
-from prefect.client.schemas.filters import WorkPoolFilter, WorkPoolFilterType
-from prefect.exceptions import ObjectNotFound
-from prefect.settings import (
-    PREFECT_API_URL,
+from prefect.client.schemas.filters import (
+    WorkPoolFilter,
+    WorkPoolFilterType,
 )
+from prefect.exceptions import ObjectNotFound
 from prefect.utilities.callables import ParameterSchema
 from prefect.workers.utilities import (
     get_default_base_job_template_for_infrastructure_type,
@@ -22,16 +23,7 @@ from prefect_cloud.settings import settings
 
 PREFECT_MANAGED = "prefect:managed"
 
-
-# TODO: temporary remove
-def get_cloud_api_url():
-    url = PREFECT_API_URL.value()
-    if url.startswith("https://api.prefect.dev/api"):
-        return "https://api.prefect.dev/api"
-    elif url.startswith("https://api.stg.prefect.dev/api"):
-        return "https://api.stg.prefect.dev/api"
-    else:
-        return "https://api.prefect.cloud/api"
+logger = getLogger(__name__)
 
 
 class PrefectCloudClient(PrefectClient):

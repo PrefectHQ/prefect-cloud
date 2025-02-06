@@ -16,10 +16,7 @@ from rich.table import Table
 from rich.text import Text
 
 from prefect_cloud import auth, deployments
-from prefect_cloud.client import (
-    get_cloud_api_url,
-    get_prefect_cloud_client,
-)
+from prefect_cloud.client import get_prefect_cloud_client
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import (
     FileNotFound,
@@ -134,6 +131,8 @@ async def deploy(
                 # TODO: put back flowify if this a public repo? need to figure that out.
             ]
 
+            _, api_url, _ = auth.get_cloud_urls_or_login()
+
             deployment_id = await client.create_managed_deployment(
                 deployment_name,
                 github_ref.filepath,
@@ -143,7 +142,7 @@ async def deploy(
                 parameter_schema,
                 job_variables={
                     "pip_packages": get_dependencies(dependencies or []),
-                    "env": {"PREFECT_CLOUD_API_URL": get_cloud_api_url()} | env_vars,
+                    "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
                 },
             )
 
@@ -158,6 +157,23 @@ async def deploy(
     app.console.print(
         f"Run it with: \n $ prefect deployment run {function}/{deployment_name}",
         style="blue",
+    )
+
+
+@app.command()
+async def run(
+    deployment: str = typer.Argument(
+        ...,
+        help="The deployment to run (either its name or ID).",
+    ),
+):
+    ui_url, _, _ = auth.get_cloud_urls_or_login()
+    flow_run = await deployments.run(deployment)
+    flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
+    app.console.print(
+        f"Flow run [bold]{flow_run.name}[/bold] [dim]({flow_run.id})[/dim] created",
+        f"and will begin running soon.\nView its progress "
+        f"[link={flow_run_url}]on Prefect Cloud[/link].",
     )
 
 
