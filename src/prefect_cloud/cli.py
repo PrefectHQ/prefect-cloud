@@ -172,8 +172,8 @@ async def run(
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
     app.console.print(
         f"Flow run [bold]{flow_run.name}[/bold] [dim]({flow_run.id})[/dim] created",
-        f"and will begin running soon.\nView its progress "
-        f"[link={flow_run_url}]on Prefect Cloud[/link].",
+        f"and will begin running soon.\n"
+        f"[link={flow_run_url}]View its progress on Prefect Cloud[/link].",
     )
 
 
