@@ -5,18 +5,22 @@ from contextlib import AsyncExitStack
 import httpcore
 import httpx
 import asyncio
+from uuid import UUID
 from prefect_cloud.schemas.actions import (
     WorkPoolCreate,
     BlockDocumentCreate,
     BlockDocumentUpdate,
 )
+
 from prefect_cloud.schemas.filters import WorkPoolFilter, WorkPoolFilterType
 from prefect_cloud.utilities.exception import ObjectNotFound
-
+from logging import getLogger
 from prefect.utilities.callables import ParameterSchema
 from prefect.workers.utilities import (
     get_default_base_job_template_for_infrastructure_type,
 )
+
+from prefect_cloud import auth
 from prefect_cloud.settings import settings
 from prefect_cloud.clients.work_pools import WorkPoolAsyncClient
 from prefect_cloud.clients.deployments import DeploymentAsyncClient
@@ -30,6 +34,7 @@ PREFECT_MANAGED = "prefect:managed"
 HTTP_METHODS: TypeAlias = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
 
 PREFECT_API_REQUEST_TIMEOUT = 60.0
+logger = getLogger(__name__)
 
 
 class ServerType(AutoEnum):
@@ -248,8 +253,25 @@ class PrefectCloudClient(
     def __exit__(self, *_: object) -> NoReturn:
         assert False, "This should never be called but must be defined for __enter__"
 
+    async def pause_deployment(self, deployment_id: UUID):
+        deployment = await self.read_deployment(deployment_id)
 
-def get_prefect_cloud_client(api_url: str, api_key: str):
+        for schedule in deployment.schedules:
+            await self.update_deployment_schedule(
+                deployment.id, schedule.id, active=False
+            )
+
+    async def resume_deployment(self, deployment_id: UUID):
+        deployment = await self.read_deployment(deployment_id)
+
+        for schedule in deployment.schedules:
+            await self.update_deployment_schedule(
+                deployment.id, schedule.id, active=True
+            )
+
+
+def get_prefect_cloud_client() -> PrefectCloudClient:
+    _, api_url, api_key = auth.get_cloud_urls_or_login()
     return PrefectCloudClient(
         api_url=api_url,
         api_key=api_key,
