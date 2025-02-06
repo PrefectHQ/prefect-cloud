@@ -318,10 +318,7 @@ def get_cloud_profile() -> dict[str, str] | None:
         return None
 
     profiles = toml.load(profile_path)
-    profile = profiles.get("profiles", {}).get(cloud_profile_name())
-    if not profile:
-        return None
-    return profile
+    return profiles.get("profiles", {}).get(cloud_profile_name())
 
 
 def set_cloud_profile(api_key: str, workspace: Workspace) -> None:
