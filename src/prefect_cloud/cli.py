@@ -5,12 +5,11 @@ import tzlocal
 from prefect.cli._utilities import exit_with_error as _exit_with_error
 from prefect.cli.root import PrefectTyper
 from prefect_cloud.schemas.objects import DeploymentSchedule
-from prefect_cloud.schemas.schedules import (
-    CronSchedule,
+from prefect.client.schemas.schedules import (
     IntervalSchedule,
     RRuleSchedule,
 )
-from prefect.utilities.urls import url_for
+from prefect_cloud.schemas.objects import CronSchedule
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
@@ -145,12 +144,9 @@ async def deploy(
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
                 },
             )
-
+    deployment_url = f"{api_url}/deployments/{deployment_id}"
     app.console.print(
-        f"View deployment here: "
-        f"\n ➜ [link={url_for('deployment', deployment_id)}]"
-        f"{deployment_name}"
-        f"[/link]",
+        f"View deployment here: \n ➜ [link={deployment_url}]{deployment_name}[/link]",
     )
 
     app.console.print(

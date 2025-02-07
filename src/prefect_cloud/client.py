@@ -32,7 +32,7 @@ from prefect_cloud.schemas.objects import (
     CronSchedule,
 )
 from prefect_cloud.schemas.responses import DeploymentResponse
-from prefect_cloud.utilities.generics import validate_list, AutoEnum
+from prefect_cloud.utilities.generics import validate_list
 from prefect_cloud.settings import settings
 
 PREFECT_MANAGED = "prefect:managed"
@@ -63,13 +63,6 @@ class FlowRunFilterDeploymentId(BaseModel):
     any_: Optional[List[UUID]] = Field(
         default=None, description="A list of flow run deployment ids to include"
     )
-
-
-class ServerType(AutoEnum):
-    EPHEMERAL = AutoEnum.auto()
-    SERVER = AutoEnum.auto()
-    CLOUD = AutoEnum.auto()
-    UNCONFIGURED = AutoEnum.auto()
 
 
 class PrefectCloudClient(httpx.AsyncClient):

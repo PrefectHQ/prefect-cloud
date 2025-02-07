@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-from typing import Annotated, Any, Optional, Literal
+from typing import Any, Optional, Literal
 from uuid import UUID, uuid4
 from pydantic import (
     Field,
@@ -14,33 +14,25 @@ from pydantic import (
 from typing_extensions import TypeVar
 from prefect_cloud.utilities.generics import handle_secret_render
 
-from prefect_cloud.utilities.validators import (
-    validate_block_document_name,
-    validate_default_queue_id_not_none,
-    default_timezone,
-    validate_cron_string,
-)
+import re
 
 from prefect_cloud.types import (
     Name,
 )
-from prefect_cloud.utilities.generics import AutoEnum
 
 
 DEFAULT_BLOCK_SCHEMA_VERSION: Literal["non-versioned"] = "non-versioned"
 R = TypeVar("R", default=Any)
 
 
-class WorkPoolStatus(AutoEnum):
-    """Enumeration of work pool statuses."""
-
-    READY = AutoEnum.auto()
-    NOT_READY = AutoEnum.auto()
-    PAUSED = AutoEnum.auto()
-
-    @property
-    def display_name(self) -> str:
-        return self.name.replace("_", " ").capitalize()
+def validate_block_document_name(value: Optional[str]) -> Optional[str]:
+    field_name = "Block document name"
+    if value is not None and not re.match("^[a-z0-9-]*$", value):
+        raise ValueError(
+            f"{field_name} must only contain lowercase letters, numbers, and"
+            " underscores."
+        )
+    return value
 
 
 class DeploymentFlowRun(BaseModel):
@@ -94,7 +86,10 @@ class BlockDocument(BaseModel):
     def serialize_data(
         self, handler: SerializerFunctionWrapHandler, info: SerializationInfo
     ) -> Any:
-        self.data = handle_secret_render(self.data, info.context or {})
+        if self.data.get("secret"):
+            self.data["secret"] = handle_secret_render(
+                self.data["secret"], info.context or {}
+            )
         return handler(self)
 
 
@@ -205,14 +200,6 @@ class WorkPool(BaseModel):
         description="Pausing the work pool stops the delivery of all work.",
     )
 
-    # this required field has a default of None so that the custom validator
-    # below will be called and produce a more helpful error message. Because
-    # the field metadata is attached via an annotation, the default is hidden
-    # from type checkers.
-    default_queue_id: Annotated[
-        UUID, Field(default=None, description="The id of the pool's default queue.")
-    ]
-
     @property
     def is_push_pool(self) -> bool:
         return self.type.endswith(":push")
@@ -220,11 +207,6 @@ class WorkPool(BaseModel):
     @property
     def is_managed_pool(self) -> bool:
         return self.type.endswith(":managed")
-
-    @field_validator("default_queue_id")
-    @classmethod
-    def helpful_error_for_missing_default_queue_id(cls, v: Optional[UUID]) -> UUID:
-        return validate_default_queue_id_not_none(v)
 
 
 class CronSchedule(BaseModel):
@@ -261,12 +243,17 @@ class CronSchedule(BaseModel):
         ),
     )
 
-    @field_validator("timezone")
-    @classmethod
-    def valid_timezone(cls, v: Optional[str]) -> Optional[str]:
-        return default_timezone(v)
-
     @field_validator("cron")
     @classmethod
     def valid_cron_string(cls, v: str) -> str:
-        return validate_cron_string(v)
+        from croniter import croniter
+
+        # croniter allows "random" and "hashed" expressions
+        # which we do not support https://github.com/kiorky/croniter
+        if not croniter.is_valid(v):
+            raise ValueError(f'Invalid cron string: "{v}"')
+        elif any(c for c in v.split() if c.casefold() in ["R", "H", "r", "h"]):
+            raise ValueError(
+                f'Random and Hashed expressions are unsupported, received: "{v}"'
+            )
+        return v
