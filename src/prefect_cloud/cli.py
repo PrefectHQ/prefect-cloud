@@ -151,12 +151,10 @@ async def deploy(
         f"\n ➜ [link={url_for('deployment', deployment_id)}]"
         f"{deployment_name}"
         f"[/link]",
-        style="blue",
     )
 
     app.console.print(
-        f"Run it with: \n $ prefect deployment run {function}/{deployment_name}",
-        style="blue",
+        f"Run it with: \n $ prefect-cloud run {function}/{deployment_name}",
     )
 
 

@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import threading
 import webbrowser
@@ -16,9 +17,22 @@ from pydantic import BaseModel, TypeAdapter
 
 from prefect_cloud.utilities.tui import prompt_select_from_list
 
-# TODO: Get this configuration from the user's environment if possible
-CLOUD_UI_URL = "https://app.prefect.cloud"
-CLOUD_API_URL = "https://api.prefect.cloud/api"
+if os.environ.get("CLOUD_ENV") in ("prd", "prod", None):
+    CLOUD_UI_URL = "https://app.prefect.cloud"
+    CLOUD_API_URL = "https://api.prefect.cloud/api"
+elif os.environ.get("CLOUD_ENV") == "stg":
+    CLOUD_UI_URL = "https://app.stg.prefect.dev"
+    CLOUD_API_URL = "https://api.stg.prefect.dev/api"
+elif os.environ.get("CLOUD_ENV") == "dev":
+    CLOUD_UI_URL = "https://app.prefect.dev"
+    CLOUD_API_URL = "https://api.prefect.dev/api"
+elif os.environ.get("CLOUD_ENV") == "lcl":
+    CLOUD_UI_URL = "http://localhost:3000"
+    CLOUD_API_URL = "http://localhost:8000/api"
+else:
+    raise ValueError(f"Invalid CLOUD_ENV: {os.environ.get('CLOUD_ENV')}")
+
+
 PREFECT_HOME = Path.home() / ".prefect"
 
 
