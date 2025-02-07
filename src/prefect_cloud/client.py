@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Literal, Union
+from typing import Any, Literal, Union, Optional, Dict
 from typing_extensions import TypeAlias
 from datetime import datetime, timezone
 import httpx
@@ -13,10 +13,7 @@ from prefect_cloud.schemas.actions import (
 from httpx import HTTPStatusError, RequestError
 from prefect_cloud.utilities.exception import ObjectNotFound, ObjectAlreadyExists
 from logging import getLogger
-from prefect.utilities.callables import ParameterSchema
-from prefect.workers.utilities import (
-    get_default_base_job_template_for_infrastructure_type,
-)
+from prefect_cloud.utilities.callables import ParameterSchema
 
 from prefect_cloud import auth
 from prefect_cloud.schemas.objects import (
@@ -766,9 +763,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         if work_pools:
             return work_pools[0].name
 
-        template = await get_default_base_job_template_for_infrastructure_type(
-            PREFECT_MANAGED
-        )
+        template = await self.get_default_base_job_template_for_managed_work_pool()
         if template is None:
             raise ValueError("No default base job template found for managed work pool")
 
@@ -849,6 +844,25 @@ class PrefectCloudClient(httpx.AsyncClient):
             await self.update_deployment_schedule_active(
                 deployment.id, schedule.id, active=True
             )
+
+    async def get_default_base_job_template_for_managed_work_pool(
+        self,
+    ) -> Optional[Dict[str, Any]]:
+        response = await self.request(
+            "GET", "collections/views/aggregate-worker-metadata"
+        )
+        try:
+            response = await self.request(
+                "GET", "collections/views/aggregate-worker-metadata"
+            )
+            worker_metadata = response.json()
+            for collection in worker_metadata.values():
+                for worker in collection.values():
+                    if worker.get("type") == PREFECT_MANAGED:
+                        return worker.get("default_base_job_configuration")
+        except Exception:
+            pass
+        return None
 
 
 async def get_prefect_cloud_client() -> PrefectCloudClient:

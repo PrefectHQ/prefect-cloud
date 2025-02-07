@@ -25,6 +25,12 @@ class ObjectNotFound(Exception):
         return self.help_message or super().__str__()
 
 
+class MissingProfileError(ValueError):
+    """
+    Raised when a profile name does not exist.
+    """
+
+
 class ObjectAlreadyExists(Exception):
     """
     Raised when the client receives a 409 (conflict) from the API.

@@ -9,7 +9,6 @@ authors = [
 
 requires-python = ">=3.12"
 dependencies = [
-    "prefect>=3.1.14",
     "pydantic-settings>=2.7.1",
     "pydantic>=2.10.6",
     "rich>=13.9.4",
@@ -17,6 +16,7 @@ dependencies = [
     "typing-extensions>=4.12.2",
     "uv>=0.5.26",
     "tzlocal>=5.2",
+    "prefect>=3.1.15",
 ]
 
 [dependency-groups]

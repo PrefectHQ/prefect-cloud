@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+import datetime
+from typing import Any, Optional, Union, TypeAlias
 from uuid import UUID, uuid4
 from pydantic import (
     Field,
@@ -103,7 +104,7 @@ class DeploymentSchedule(BaseModel):
         default=None,
         description="The deployment id associated with this schedule.",
     )
-    schedule: CronSchedule = Field(
+    schedule: SCHEDULE_TYPES = Field(
         default=..., description="The schedule for the deployment."
     )
     active: bool = Field(
@@ -145,3 +146,14 @@ class CronSchedule(BaseModel):
                 f'Random and Hashed expressions are unsupported, received: "{v}"'
             )
         return v
+
+
+class IntervalSchedule(BaseModel):
+    interval: datetime.timedelta = Field(gt=datetime.timedelta(0))
+
+
+class RRuleSchedule(BaseModel):
+    rrule: str
+
+
+SCHEDULE_TYPES: TypeAlias = Union[IntervalSchedule, CronSchedule, RRuleSchedule]
