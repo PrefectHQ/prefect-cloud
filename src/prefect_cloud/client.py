@@ -1,16 +1,19 @@
 from __future__ import annotations
-from typing import Any, Literal, NoReturn, Optional
-from typing_extensions import TypeAlias, Self
-from contextlib import AsyncExitStack
-
+from typing import Any, Literal, Union, Optional, List
+from typing_extensions import TypeAlias
+from pydantic import BaseModel, Field
+from pydantic_extra_types.pendulum_dt import DateTime
+from datetime import datetime, timezone
 import httpx
-import asyncio
+
 from uuid import UUID
 from prefect_cloud.schemas.actions import (
     BlockDocumentCreate,
 )
 
-from prefect_cloud.utilities.exception import ObjectNotFound
+import warnings
+from httpx import HTTPStatusError, RequestError
+from prefect_cloud.utilities.exception import ObjectNotFound, ObjectAlreadyExists
 from logging import getLogger
 from prefect.utilities.callables import ParameterSchema
 from prefect.workers.utilities import (
@@ -18,11 +21,19 @@ from prefect.workers.utilities import (
 )
 
 from prefect_cloud import auth
+from prefect_cloud.schemas.objects import (
+    Flow,
+    WorkPool,
+    BlockDocument,
+    DeploymentFlowRun,
+    BlockType,
+    BlockSchema,
+    DeploymentSchedule,
+    CronSchedule,
+)
+from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.utilities.generics import validate_list
 from prefect_cloud.settings import settings
-from prefect_cloud.clients.work_pools import WorkPoolAsyncClient
-from prefect_cloud.clients.deployments import DeploymentAsyncClient
-from prefect_cloud.clients.flow import FlowAsyncClient
-from prefect_cloud.clients.blocks import BlocksDocumentAsyncClient
 from prefect_cloud.utilities.collections import AutoEnum
 
 PREFECT_MANAGED = "prefect:managed"
@@ -34,6 +45,27 @@ PREFECT_API_REQUEST_TIMEOUT = 60.0
 logger = getLogger(__name__)
 
 
+class FlowRunFilterExpectedStartTime(BaseModel):
+    """Filter by `FlowRun.expected_start_time`."""
+
+    before_: Optional[DateTime] = Field(
+        default=None,
+        description="Only include flow runs scheduled to start at or before this time",
+    )
+    after_: Optional[DateTime] = Field(
+        default=None,
+        description="Only include flow runs scheduled to start at or after this time",
+    )
+
+
+class FlowRunFilterDeploymentId(BaseModel):
+    """Filter by `FlowRun.deployment_id`."""
+
+    any_: Optional[List[UUID]] = Field(
+        default=None, description="A list of flow run deployment ids to include"
+    )
+
+
 class ServerType(AutoEnum):
     EPHEMERAL = AutoEnum.auto()
     SERVER = AutoEnum.auto()
@@ -41,54 +73,747 @@ class ServerType(AutoEnum):
     UNCONFIGURED = AutoEnum.auto()
 
 
-class PrefectCloudClient(
-    WorkPoolAsyncClient,
-    DeploymentAsyncClient,
-    FlowAsyncClient,
-    BlocksDocumentAsyncClient,
-):
+class PrefectCloudClient(httpx.AsyncClient):
     def __init__(self, api_url: str, api_key: str):
         httpx_settings: dict[str, Any] = {}
         httpx_settings.setdefault("headers", {"Authorization": f"Bearer {api_key}"})
         httpx_settings.setdefault("base_url", api_url)
+        super().__init__(**httpx_settings)
 
-        self._context_stack: int = 0
-        self._exit_stack = AsyncExitStack()
+    async def read_managed_work_pools(
+        self,
+    ) -> list["WorkPool"]:
+        """
+        Reads work pools.
 
-        self._closed = False
-        self._started = False
+        Args:
+            limit: Limit for the work pool query.
+            offset: Offset for the work pool query.
 
-        # See https://www.python-httpx.org/advanced/#pool-limit-configuration
-        httpx_settings.setdefault(
-            "limits",
-            httpx.Limits(
-                # We see instability when allowing the client to open many connections at once.
-                # Limiting concurrency results in more stable performance.
-                max_connections=16,
-                max_keepalive_connections=8,
-                # The Prefect Cloud LB will keep connections alive for 30s.
-                # Only allow the client to keep connections alive for 25s.
-                keepalive_expiry=25,
-            ),
+        Returns:
+            A list of work pools.
+        """
+        from prefect_cloud.schemas.objects import WorkPool
+
+        body: dict[str, Any] = {
+            "limit": None,
+            "offset": 0,
+            "work_pools": {"any_": [PREFECT_MANAGED]},
+        }
+        response = await self.request("POST", "/work_pools/filter", json=body)
+        return validate_list(WorkPool, response.json())
+
+    async def read_work_pool_by_name(self, name: str) -> "WorkPool":
+        response = await self.request("GET", f"/work_pools/{name}")
+        return WorkPool.model_validate(response.json())
+
+    async def update_work_pool_type_and_template(
+        self,
+        name: str,
+        type: str,
+        template: dict[str, Any],
+    ) -> None:
+        """
+        Updates a work pool.
+
+        Args:
+            work_pool_name: Name of the work pool to update.
+            work_pool: Fields to update in the work pool.
+        """
+        try:
+            await self.request(
+                "PATCH",
+                f"/work_pools/{name}",
+                json={"type": type, "base_job_template": template},
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+
+    async def create_work_pool_managed_by_name(
+        self,
+        name: str,
+        template: dict[str, Any],
+        overwrite: bool = False,
+    ) -> "WorkPool":
+        """
+        Creates a work pool with the provided configuration.
+
+        Args:
+            work_pool: Desired configuration for the new work pool.
+
+        Returns:
+            Information about the newly created work pool.
+        """
+        from prefect_cloud.schemas.objects import WorkPool
+
+        try:
+            response = await self.request(
+                "POST",
+                "/work_pools/",
+                json={
+                    "name": name,
+                    "type": PREFECT_MANAGED,
+                    "base_job_template": template,
+                },
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 409:
+                if overwrite:
+                    existing_work_pool = await self.read_work_pool_by_name(name=name)
+                    if existing_work_pool.type != PREFECT_MANAGED:
+                        warnings.warn(
+                            "Overwriting work pool type is not supported. Ignoring provided type.",
+                            category=UserWarning,
+                        )
+                    await self.update_work_pool_type_and_template(
+                        name=existing_work_pool.name,
+                        type=PREFECT_MANAGED,
+                        template=template,
+                    )
+                    response = await self.request(
+                        "GET",
+                        f"/work_pools/{name}",
+                    )
+                else:
+                    raise ObjectAlreadyExists(http_exc=e) from e
+            else:
+                raise
+
+        return WorkPool.model_validate(response.json())
+
+    async def create_flow_from_name(self, flow_name: str) -> "UUID":
+        """
+        Create a flow in the Prefect API.
+
+        Args:
+            flow_name: the name of the new flow
+
+        Raises:
+            httpx.RequestError: if a flow was not created for any reason
+
+        Returns:
+            the ID of the flow in the backend
+        """
+
+        flow_data = {"name": flow_name}
+        response = await self.request("POST", "/flows/", json=flow_data)
+
+        flow_id = response.json().get("id")
+        if not flow_id:
+            raise RequestError(f"Malformed response: {response}")
+
+        # Return the id of the created flow
+        from uuid import UUID
+
+        return UUID(flow_id)
+
+    async def create_deployment(
+        self,
+        flow_id: "UUID",
+        name: str,
+        entrypoint: str,
+        work_pool_name: str,
+        pull_steps: list[dict[str, Any]] | None = None,
+        parameter_openapi_schema: dict[str, Any] | None = None,
+        job_variables: dict[str, Any] | None = None,
+    ) -> "UUID":
+        """
+        Create a deployment.
+
+        Args:
+            flow_id: the flow ID to create a deployment for
+            name: the name of the deployment
+            entrypoint: the entrypoint path for the flow
+            work_pool_name: the name of the work pool to use
+            pull_steps: steps to pull code/data before running the flow
+            parameter_openapi_schema: OpenAPI schema for flow parameters
+            job_variables: A dictionary of dot delimited infrastructure overrides that
+                will be applied at runtime
+
+        Returns:
+            the ID of the deployment in the backend
+        """
+        from uuid import UUID
+        from prefect_cloud.schemas.actions import DeploymentCreate
+
+        if parameter_openapi_schema is None:
+            parameter_openapi_schema = {}
+
+        deployment_create = DeploymentCreate(
+            flow_id=flow_id,
+            name=name,
+            entrypoint=entrypoint,
+            work_pool_name=work_pool_name,
+            pull_steps=pull_steps,
+            parameter_openapi_schema=parameter_openapi_schema,
+            job_variables=dict(job_variables or {}),
         )
 
-        # See https://www.python-httpx.org/http2/
-        # Enabling HTTP/2 support on the client does not necessarily mean that your requests
-        # and responses will be transported over HTTP/2, since both the client and the server
-        # need to support HTTP/2. If you connect to a server that only supports HTTP/1.1 the
-        # client will use a standard HTTP/1.1 connection instead.
-        httpx_settings.setdefault("http2", False)
-        httpx_settings.setdefault(
-            "timeout",
-            httpx.Timeout(
-                connect=PREFECT_API_REQUEST_TIMEOUT,
-                read=PREFECT_API_REQUEST_TIMEOUT,
-                write=PREFECT_API_REQUEST_TIMEOUT,
-                pool=PREFECT_API_REQUEST_TIMEOUT,
+        json = deployment_create.model_dump(mode="json")
+        response = await self.request(
+            "POST",
+            "/deployments/",
+            json=json,
+        )
+        deployment_id = response.json().get("id")
+        if not deployment_id:
+            raise RequestError(f"Malformed response: {response}")
+
+        return UUID(deployment_id)
+
+    async def create_block_document(
+        self,
+        block_document: "BlockDocument | BlockDocumentCreate",
+        include_secrets: bool = True,
+    ) -> "BlockDocument":
+        """
+        Create a block document in the Prefect API. This data is used to configure a
+        corresponding Block.
+
+        Args:
+            include_secrets (bool): whether to include secret values
+                on the stored Block, corresponding to Pydantic's `SecretStr` and
+                `SecretBytes` fields. Note Blocks may not work as expected if
+                this is set to `False`.
+        """
+        block_document_data = block_document.model_dump(
+            mode="json",
+            exclude_unset=True,
+            exclude={"id", "block_schema", "block_type"},
+            context={"include_secrets": include_secrets},
+            serialize_as_any=True,
+        )
+        try:
+            response = await self.request(
+                "POST",
+                "/block_documents/",
+                json=block_document_data,
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 409:
+                raise ObjectAlreadyExists(http_exc=e) from e
+            else:
+                raise
+        from prefect_cloud.schemas.objects import BlockDocument
+
+        return BlockDocument.model_validate(response.json())
+
+    async def update_block_document_value(
+        self,
+        block_document_id: "UUID",
+        value: str,
+    ) -> None:
+        """
+        Update a block document in the Prefect API.
+        """
+        try:
+            await self.request(
+                "PATCH",
+                f"/block_documents/{block_document_id}",
+                json={"data": {"value": value}},
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+
+    async def delete_block_document(self, block_document_id: "UUID") -> None:
+        """
+        Delete a block document.
+        """
+        try:
+            await self.request(
+                "DELETE",
+                f"/block_documents/{block_document_id}",
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+
+    async def read_block_document(
+        self,
+        block_document_id: "UUID",
+        include_secrets: bool = True,
+    ) -> "BlockDocument":
+        """
+        Read the block document with the specified ID.
+
+        Args:
+            block_document_id: the block document id
+            include_secrets (bool): whether to include secret values
+                on the Block, corresponding to Pydantic's `SecretStr` and
+                `SecretBytes` fields. These fields are automatically obfuscated
+                by Pydantic, but users can additionally choose not to receive
+                their values from the API. Note that any business logic on the
+                Block may not work if this is `False`.
+
+        Raises:
+            httpx.RequestError: if the block document was not found for any reason
+
+        Returns:
+            A block document or None.
+        """
+        try:
+            response = await self.request(
+                "GET",
+                f"/block_documents/{block_document_id}",
+                params=dict(include_secrets=include_secrets),
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+        from prefect_cloud.schemas.objects import BlockDocument
+
+        return BlockDocument.model_validate(response.json())
+
+    async def read_block_documents(
+        self,
+        block_schema_type: str | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+        include_secrets: bool = True,
+    ) -> "list[BlockDocument]":
+        """
+        Read block documents
+
+        Args:
+            block_schema_type: an optional block schema type
+            offset: an offset
+            limit: the number of blocks to return
+            include_secrets (bool): whether to include secret values
+                on the Block, corresponding to Pydantic's `SecretStr` and
+                `SecretBytes` fields. These fields are automatically obfuscated
+                by Pydantic, but users can additionally choose not to receive
+                their values from the API. Note that any business logic on the
+                Block may not work if this is `False`.
+
+        Returns:
+            A list of block documents
+        """
+        response = await self.request(
+            "POST",
+            "/block_documents/filter",
+            json=dict(
+                block_schema_type=block_schema_type,
+                offset=offset,
+                limit=limit,
+                include_secrets=include_secrets,
             ),
         )
-        self._client = httpx.AsyncClient(**httpx_settings)
-        self._loop = None
+        from prefect_cloud.schemas.objects import BlockDocument
+
+        return validate_list(BlockDocument, response.json())
+
+    async def read_block_document_by_name(
+        self,
+        name: str,
+        block_type_slug: str,
+        include_secrets: bool = True,
+    ) -> "BlockDocument":
+        """
+        Read the block document with the specified name that corresponds to a
+        specific block type name.
+
+        Args:
+            name: The block document name.
+            block_type_slug: The block type slug.
+            include_secrets (bool): whether to include secret values
+                on the Block, corresponding to Pydantic's `SecretStr` and
+                `SecretBytes` fields. These fields are automatically obfuscated
+                by Pydantic, but users can additionally choose not to receive
+                their values from the API. Note that any business logic on the
+                Block may not work if this is `False`.
+
+        Raises:
+            httpx.RequestError: if the block document was not found for any reason
+
+        Returns:
+            A block document or None.
+        """
+        try:
+            response = await self.request(
+                "GET",
+                f"/block_types/slug/{block_type_slug}/block_documents/name/{name}",
+                params=dict(include_secrets=include_secrets),
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+        from prefect_cloud.schemas.objects import BlockDocument
+
+        return BlockDocument.model_validate(response.json())
+
+    async def read_block_type_by_slug(self, slug: str) -> "BlockType":
+        """
+        Read a block type by its slug.
+        """
+        try:
+            response = await self.request(
+                "GET",
+                f"/block_types/slug/{slug}",
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+        from prefect_cloud.schemas.objects import BlockType
+
+        return BlockType.model_validate(response.json())
+
+    async def get_most_recent_block_schema_for_block_type(
+        self,
+        block_type_id: "UUID",
+    ) -> "BlockSchema | None":
+        """
+        Fetches the most recent block schema for a specified block type ID.
+
+        Args:
+            block_type_id: The ID of the block type.
+
+        Raises:
+            httpx.RequestError: If the request fails for any reason.
+
+        Returns:
+            The most recent block schema or None.
+        """
+        try:
+            response = await self.request(
+                "POST",
+                "/block_schemas/filter",
+                json={
+                    "block_schemas": {"block_type_id": {"any_": [str(block_type_id)]}},
+                    "limit": 1,
+                },
+            )
+        except HTTPStatusError:
+            raise
+        from prefect_cloud.schemas.objects import BlockSchema
+
+        return next(iter(validate_list(BlockSchema, response.json())), None)
+
+    async def read_deployment(
+        self,
+        deployment_id: Union["UUID", str],
+    ) -> "DeploymentResponse":
+        """
+        Query the Prefect API for a deployment by id.
+
+        Args:
+            deployment_id: the deployment ID of interest
+
+        Returns:
+            a [Deployment model][prefect.client.schemas.objects.Deployment] representation of the deployment
+        """
+        from uuid import UUID
+
+        from prefect_cloud.schemas.responses import DeploymentResponse
+
+        if not isinstance(deployment_id, UUID):
+            try:
+                deployment_id = UUID(deployment_id)
+            except ValueError:
+                raise ValueError(f"Invalid deployment ID: {deployment_id}")
+
+        try:
+            response = await self.request(
+                "GET",
+                f"/deployments/{deployment_id}",
+            )
+            response.raise_for_status()
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+
+        return DeploymentResponse.model_validate(response.json())
+
+    async def read_deployment_by_name(
+        self,
+        name: str,
+    ) -> "DeploymentResponse":
+        """
+        Query the Prefect API for a deployment by name.
+
+        Args:
+            name: A deployed flow's name: <FLOW_NAME>/<DEPLOYMENT_NAME>
+
+        Raises:
+            ObjectNotFound: If request returns 404
+            RequestError: If request fails
+
+        Returns:
+            a Deployment model representation of the deployment
+        """
+        from prefect_cloud.schemas.responses import DeploymentResponse
+
+        try:
+            flow_name, deployment_name = name.split("/")
+            response = await self.request(
+                "GET",
+                f"/deployments/name/{flow_name}/{deployment_name}",
+            )
+        except (HTTPStatusError, ValueError) as e:
+            if isinstance(e, HTTPStatusError) and e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            elif isinstance(e, ValueError):
+                raise ValueError(
+                    f"Invalid deployment name format: {name}. Expected format: <FLOW_NAME>/<DEPLOYMENT_NAME>"
+                ) from e
+            else:
+                raise
+
+        return DeploymentResponse.model_validate(response.json())
+
+    async def read_all_flows(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list["Flow"]:
+        """
+        Query the Prefect API for flows. Only flows matching all criteria will
+        be returned.
+
+        Args:
+            sort: sort criteria for the flows
+            limit: limit for the flow query
+            offset: offset for the flow query
+
+        Returns:
+            a list of Flow model representations of the flows
+        """
+        body: dict[str, Any] = {
+            "sort": None,
+            "limit": limit,
+            "offset": offset,
+        }
+
+        response = await self.request("POST", "/flows/filter", json=body)
+        from prefect_cloud.schemas.objects import Flow
+
+        return validate_list(Flow, response.json())
+
+    async def read_all_deployments(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list["DeploymentResponse"]:
+        """
+        Query the Prefect API for deployments. Only deployments matching all
+        the provided criteria will be returned.
+
+        Args:
+            limit: a limit for the deployment query
+            offset: an offset for the deployment query
+
+        Returns:
+            a list of Deployment model representations
+                of the deployments
+        """
+        from prefect_cloud.schemas.responses import DeploymentResponse
+
+        body: dict[str, Any] = {
+            "limit": limit,
+            "offset": offset,
+            "sort": None,
+        }
+
+        response = await self.request("POST", "/deployments/filter", json=body)
+        return validate_list(DeploymentResponse, response.json())
+
+    async def create_deployment_schedule(
+        self,
+        deployment_id: "UUID",
+        schedule: CronSchedule,
+        active: bool,
+    ) -> "DeploymentSchedule":
+        """
+        Create deployment schedules.
+
+        Args:
+            deployment_id: the deployment ID
+            schedules: a list of tuples containing the schedule to create
+                       and whether or not it should be active.
+
+        Raises:
+            RequestError: if the schedules were not created for any reason
+
+        Returns:
+            the list of schedules created in the backend
+        """
+        from prefect_cloud.schemas.actions import DeploymentScheduleCreate
+        from prefect_cloud.schemas.objects import DeploymentSchedule
+
+        json = DeploymentScheduleCreate(
+            schedule=schedule,
+            active=active,
+        ).model_dump(mode="json")
+
+        response = await self.request(
+            "POST",
+            f"/deployments/{deployment_id}/schedules",
+            json=json,
+        )
+        return DeploymentSchedule.model_validate(response.json())
+
+    async def read_deployment_schedules(
+        self,
+        deployment_id: "UUID",
+    ) -> list["DeploymentSchedule"]:
+        """
+        Query the Prefect API for a deployment's schedules.
+
+        Args:
+            deployment_id: the deployment ID
+
+        Returns:
+            a list of DeploymentSchedule model representations of the deployment schedules
+        """
+        from prefect_cloud.schemas.objects import DeploymentSchedule
+
+        try:
+            response = await self.request(
+                "GET",
+                f"/deployments/{deployment_id}/schedules",
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+        return validate_list(DeploymentSchedule, response.json())
+
+    async def update_deployment_schedule_active(
+        self,
+        deployment_id: "UUID",
+        schedule_id: "UUID",
+        active: bool | None = None,
+    ) -> None:
+        """
+        Update a deployment schedule by ID.
+
+        Args:
+            deployment_id: the deployment ID
+            schedule_id: the deployment schedule ID of interest
+            active: whether or not the schedule should be active
+        """
+        try:
+            await self.request(
+                "PATCH",
+                f"/deployments/{deployment_id}/schedules/{schedule_id}",
+                json={"active": active},
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+
+    async def delete_deployment_schedule(
+        self,
+        deployment_id: "UUID",
+        schedule_id: "UUID",
+    ) -> None:
+        """
+        Delete a deployment schedule.
+
+        Args:
+            deployment_id: the deployment ID
+            schedule_id: the ID of the deployment schedule to delete.
+
+        Raises:
+            RequestError: if the schedules were not deleted for any reason
+        """
+        try:
+            await self.request(
+                "DELETE",
+                f"/deployments/{deployment_id}/schedules/{schedule_id}",
+            )
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+
+    async def create_flow_run_from_deployment_id(
+        self,
+        deployment_id: "UUID",
+    ) -> "DeploymentFlowRun":
+        """
+        Create a flow run for a deployment.
+
+        Args:
+            deployment_id: The deployment ID to create the flow run from
+
+        Raises:
+            RequestError: if the Prefect API does not successfully create a run for any reason
+
+        Returns:
+            The flow run model
+        """
+        from prefect_cloud.schemas.objects import DeploymentFlowRun
+
+        response = await self.request(
+            "POST",
+            f"/deployments/{deployment_id}/create_flow_run",
+            json={},
+        )
+        return DeploymentFlowRun.model_validate(response.json())
+
+    async def read_next_scheduled_flow_runs_by_deployment_ids(
+        self,
+        deployment_ids: list[UUID],
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> "list[DeploymentFlowRun]":
+        """
+        Query the Prefect API for flow runs. Only flow runs matching all criteria will
+        be returned.
+
+        Args:
+
+            sort: sort criteria for the flow runs
+            limit: limit for the flow run query
+            offset: offset for the flow run query
+
+        Returns:
+            a list of Flow Run model representations
+                of the flow runs
+        """
+
+        expected_start_time = FlowRunFilterExpectedStartTime(
+            after_=datetime.now(timezone.utc)
+        )
+        body: dict[str, Any] = {
+            "deployment_id": FlowRunFilterDeploymentId(
+                any_=deployment_ids
+            ).model_dump_json(),
+            "state": {"any_": ["SCHEDULED"]},
+            "expected_start_time": expected_start_time.model_dump_json(),
+            "sort": "EXPECTED_START_TIME_ASC",
+            "limit": limit,
+            "offset": offset,
+        }
+
+        response = await self.request("POST", "/flow_runs/filter", json=body)
+
+        from prefect_cloud.schemas.objects import DeploymentFlowRun
+
+        return validate_list(DeploymentFlowRun, response.json())
 
     async def ensure_managed_work_pool(
         self, name: str = settings.default_managed_work_pool_name
@@ -166,61 +891,6 @@ class PrefectCloudClient(
                     block_schema_id=secret_block_schema.id,
                 )
             )
-
-    async def __aenter__(self) -> Self:
-        """
-        Start the client.
-
-        If the client is already started, this will raise an exception.
-
-        If the client is already closed, this will raise an exception. Use a new client
-        instance instead.
-        """
-        if self._closed:
-            # httpx.AsyncClient does not allow reuse so we will not either.
-            raise RuntimeError(
-                "The client cannot be started again after closing. "
-                "Retrieve a new client with `get_client()` instead."
-            )
-
-        self._context_stack += 1
-
-        if self._started:
-            # allow reentrancy
-            return self
-
-        self._loop = asyncio.get_running_loop()
-        await self._exit_stack.__aenter__()
-
-        # Enter a lifespan context if using an ephemeral application.
-        # See https://github.com/encode/httpx/issues/350
-
-        # Enter the httpx client's context
-        await self._exit_stack.enter_async_context(self._client)
-
-        self._started = True
-
-        return self
-
-    async def __aexit__(self, *exc_info: Any) -> Optional[bool]:
-        """
-        Shutdown the client.
-        """
-
-        self._context_stack -= 1
-        if self._context_stack > 0:
-            return
-        self._closed = True
-        return await self._exit_stack.__aexit__(*exc_info)
-
-    def __enter__(self) -> NoReturn:
-        raise RuntimeError(
-            "The `PrefectClient` must be entered with an async context. Use 'async "
-            "with PrefectClient(...)' not 'with PrefectClient(...)'"
-        )
-
-    def __exit__(self, *_: object) -> NoReturn:
-        assert False, "This should never be called but must be defined for __enter__"
 
     async def pause_deployment(self, deployment_id: UUID):
         deployment = await self.read_deployment(deployment_id)

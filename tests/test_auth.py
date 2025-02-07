@@ -86,8 +86,8 @@ def test_workspace_api_url(sample_workspace: Workspace):
 async def test_cloud_client_sets_auth_header(sample_api_key: str):
     """Verifies that cloud client sets the correct authorization header and base URL."""
     async with cloud_client(sample_api_key) as client:
-        assert client._client.headers["Authorization"] == f"Bearer {sample_api_key}"
-        assert client._client.base_url == httpx.URL("https://api.prefect.cloud/api/")
+        assert client.headers["Authorization"] == f"Bearer {sample_api_key}"
+        assert client.base_url == httpx.URL("https://api.prefect.cloud/api/")
 
 
 async def test_key_is_valid_with_valid_key(cloud_api: Router, sample_api_key: str):

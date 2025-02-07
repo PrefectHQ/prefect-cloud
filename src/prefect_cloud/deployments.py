@@ -4,10 +4,9 @@ from uuid import UUID
 
 import tzlocal
 
-from prefect_cloud.schemas.objects import Flow, FlowRun
+from prefect_cloud.schemas.objects import Flow, DeploymentFlowRun, CronSchedule
 from prefect_cloud.schemas.responses import DeploymentResponse
-from prefect_cloud.schemas.schedules import CronSchedule
-from prefect_cloud.schemas.sorting import FlowRunSort
+
 
 from prefect_cloud.auth import get_prefect_cloud_client
 
@@ -16,7 +15,7 @@ from prefect_cloud.auth import get_prefect_cloud_client
 class DeploymentListContext:
     deployments: list[DeploymentResponse]
     flows_by_id: dict[UUID, Flow]
-    next_runs_by_deployment_id: dict[UUID, FlowRun]
+    next_runs_by_deployment_id: dict[UUID, DeploymentFlowRun]
 
 
 async def list() -> DeploymentListContext:
@@ -26,9 +25,8 @@ async def list() -> DeploymentListContext:
 
         next_runs = await client.read_next_scheduled_flow_runs_by_deployment_ids(
             deployment_ids=[deployment.id for deployment in deployments],
-            sort=FlowRunSort.EXPECTED_START_TIME_ASC,
         )
-        next_runs_by_deployment_id: dict[UUID, FlowRun] = {}
+        next_runs_by_deployment_id: dict[UUID, DeploymentFlowRun] = {}
         for run in next_runs:
             if run.deployment_id not in next_runs_by_deployment_id:
                 next_runs_by_deployment_id[run.deployment_id] = run
@@ -50,7 +48,7 @@ async def _get_deployment(deployment_: str) -> DeploymentResponse:
             return await client.read_deployment(deployment_id)
 
 
-async def run(deployment_: str) -> FlowRun:
+async def run(deployment_: str) -> DeploymentFlowRun:
     deployment = await _get_deployment(deployment_)
 
     async with await get_prefect_cloud_client() as client:
@@ -72,9 +70,7 @@ async def schedule(deployment_: str, schedule: str):
                 local_tz = "UTC"
 
             new_schedule = CronSchedule(cron=schedule, timezone=local_tz)
-            await client.create_deployment_schedules(
-                deployment.id, [(new_schedule, True)]
-            )
+            await client.create_deployment_schedule(deployment.id, new_schedule, True)
 
 
 async def pause(deployment_: str):
