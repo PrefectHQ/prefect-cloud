@@ -1,6 +1,5 @@
 from uuid import UUID, uuid4
 
-import prefect.main  # noqa: F401
 import pytest
 import respx
 from httpx import Response

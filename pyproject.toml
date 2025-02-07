@@ -16,7 +16,13 @@ dependencies = [
     "typing-extensions>=4.12.2",
     "uv>=0.5.26",
     "tzlocal>=5.2",
-    "prefect>=3.1.15",
+    "httpx>=0.28.1",
+    "pydantic-extra-types>=2.10.2",
+    "pendulum>=3.0.0",
+    "toml>=0.10.2",
+    "griffe>=1.5.6",
+    "readchar>=4.2.1",
+    "croniter>=6.0.0",
 ]
 
 [dependency-groups]
