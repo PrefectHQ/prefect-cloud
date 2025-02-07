@@ -1,21 +1,15 @@
 import zoneinfo
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from uuid import UUID
 
 import tzlocal
-from prefect.client.schemas.filters import (
-    FlowRunFilter,
-    FlowRunFilterDeploymentId,
-    FlowRunFilterExpectedStartTime,
-    FlowRunFilterState,
-)
-from prefect.client.schemas.objects import Flow, FlowRun
-from prefect.client.schemas.responses import DeploymentResponse
-from prefect.client.schemas.schedules import CronSchedule
-from prefect.client.schemas.sorting import FlowRunSort
 
-from prefect_cloud.client import get_prefect_cloud_client
+from prefect_cloud.schemas.objects import Flow, FlowRun
+from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.schemas.schedules import CronSchedule
+from prefect_cloud.schemas.sorting import FlowRunSort
+
+from prefect_cloud.auth import get_prefect_cloud_client
 
 
 @dataclass
@@ -26,20 +20,12 @@ class DeploymentListContext:
 
 
 async def list() -> DeploymentListContext:
-    async with get_prefect_cloud_client() as client:
-        deployments = await client.read_deployments()
-        flows_by_id = {flow.id: flow for flow in await client.read_flows()}
+    async with await get_prefect_cloud_client() as client:
+        deployments = await client.read_all_deployments()
+        flows_by_id = {flow.id: flow for flow in await client.read_all_flows()}
 
-        next_runs = await client.read_flow_runs(
-            flow_run_filter=FlowRunFilter(
-                deployment_id=FlowRunFilterDeploymentId(
-                    any_=[deployment.id for deployment in deployments]
-                ),
-                state=FlowRunFilterState(any_=["SCHEDULED"]),
-                expected_start_time=FlowRunFilterExpectedStartTime(
-                    after_=datetime.now(timezone.utc)
-                ),
-            ),
+        next_runs = await client.read_next_scheduled_flow_runs_by_deployment_ids(
+            deployment_ids=[deployment.id for deployment in deployments],
             sort=FlowRunSort.EXPECTED_START_TIME_ASC,
         )
         next_runs_by_deployment_id: dict[UUID, FlowRun] = {}
@@ -55,7 +41,7 @@ async def list() -> DeploymentListContext:
 
 
 async def _get_deployment(deployment_: str) -> DeploymentResponse:
-    async with get_prefect_cloud_client() as client:
+    async with await get_prefect_cloud_client() as client:
         try:
             deployment_id = UUID(deployment_)
         except ValueError:
@@ -67,14 +53,14 @@ async def _get_deployment(deployment_: str) -> DeploymentResponse:
 async def run(deployment_: str) -> FlowRun:
     deployment = await _get_deployment(deployment_)
 
-    async with get_prefect_cloud_client() as client:
-        return await client.create_flow_run_from_deployment(deployment.id)
+    async with await get_prefect_cloud_client() as client:
+        return await client.create_flow_run_from_deployment_id(deployment.id)
 
 
 async def schedule(deployment_: str, schedule: str):
     deployment = await _get_deployment(deployment_)
 
-    async with get_prefect_cloud_client() as client:
+    async with await get_prefect_cloud_client() as client:
         for prior_schedule in deployment.schedules:
             await client.delete_deployment_schedule(deployment.id, prior_schedule.id)
 
@@ -94,12 +80,12 @@ async def schedule(deployment_: str, schedule: str):
 async def pause(deployment_: str):
     deployment = await _get_deployment(deployment_)
 
-    async with get_prefect_cloud_client() as client:
+    async with await get_prefect_cloud_client() as client:
         await client.pause_deployment(deployment.id)
 
 
 async def resume(deployment_: str):
     deployment = await _get_deployment(deployment_)
 
-    async with get_prefect_cloud_client() as client:
+    async with await get_prefect_cloud_client() as client:
         await client.resume_deployment(deployment.id)

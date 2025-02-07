@@ -9,46 +9,18 @@ from prefect_cloud.clients.base import BaseAsyncClient
 from prefect_cloud.utilities.generics import validate_list
 
 if TYPE_CHECKING:
-    from prefect_cloud.schemas.actions import (
-        WorkPoolCreate,
-        WorkPoolUpdate,
-    )
-    from prefect_cloud.schemas.filters import WorkPoolFilter
     from prefect_cloud.schemas.objects import WorkPool
 
 
 from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
 
 
-class WorkPoolAsyncClient(BaseAsyncClient):
-    async def read_work_pool(self, work_pool_name: str) -> WorkPool:
-        """
-        Reads information for a given work pool
-        Args:
-            work_pool_name: The name of the work pool to for which to get
-                information.
-        Returns:
-            Information about the requested work pool.
-        """
-        try:
-            response = await self.request(
-                "GET",
-                "/work_pools/{name}",
-                path_params={"work_pool_name": work_pool_name},
-            )
-            response.raise_for_status()
-            return WorkPool.model_validate(response.json())
-        except HTTPStatusError as e:
-            if e.response.status_code == 404:
-                raise ObjectNotFound(http_exc=e) from e
-            else:
-                raise
+PREFECT_MANAGED = "prefect:managed"
 
-    async def read_work_pools(
+
+class WorkPoolAsyncClient(BaseAsyncClient):
+    async def read_managed_work_pools(
         self,
-        limit: int | None = None,
-        offset: int = 0,
-        work_pool_filter: "WorkPoolFilter | None" = None,
     ) -> list["WorkPool"]:
         """
         Reads work pools.
@@ -56,7 +28,6 @@ class WorkPoolAsyncClient(BaseAsyncClient):
         Args:
             limit: Limit for the work pool query.
             offset: Offset for the work pool query.
-            work_pool_filter: Criteria by which to filter work pools.
 
         Returns:
             A list of work pools.
@@ -64,18 +35,23 @@ class WorkPoolAsyncClient(BaseAsyncClient):
         from prefect_cloud.schemas.objects import WorkPool
 
         body: dict[str, Any] = {
-            "limit": limit,
-            "offset": offset,
-            "work_pools": (
-                work_pool_filter.model_dump(mode="json") if work_pool_filter else None
-            ),
+            "limit": None,
+            "offset": 0,
+            "work_pools": {"any_": [PREFECT_MANAGED]},
         }
         response = await self.request("POST", "/work_pools/filter", json=body)
         return validate_list(WorkPool, response.json())
 
-    async def create_work_pool(
+    async def read_work_pool_by_name(self, name: str) -> "WorkPool":
+        response = await self.request(
+            "GET", "/work_pools/{name}", path_params={"name": name}
+        )
+        return WorkPool.model_validate(response.json())
+
+    async def create_work_pool_managed_by_name(
         self,
-        work_pool: "WorkPoolCreate",
+        name: str,
+        template: dict[str, Any],
         overwrite: bool = False,
     ) -> "WorkPool":
         """
@@ -87,36 +63,36 @@ class WorkPoolAsyncClient(BaseAsyncClient):
         Returns:
             Information about the newly created work pool.
         """
-        from prefect_cloud.schemas.actions import WorkPoolUpdate
         from prefect_cloud.schemas.objects import WorkPool
 
         try:
             response = await self.request(
                 "POST",
                 "/work_pools/",
-                json=work_pool.model_dump(mode="json", exclude_unset=True),
+                json={
+                    "name": name,
+                    "type": PREFECT_MANAGED,
+                    "base_job_template": template,
+                },
             )
         except HTTPStatusError as e:
             if e.response.status_code == 409:
                 if overwrite:
-                    existing_work_pool = await self.read_work_pool(
-                        work_pool_name=work_pool.name
-                    )
-                    if existing_work_pool.type != work_pool.type:
+                    existing_work_pool = await self.read_work_pool_by_name(name=name)
+                    if existing_work_pool.type != PREFECT_MANAGED:
                         warnings.warn(
                             "Overwriting work pool type is not supported. Ignoring provided type.",
                             category=UserWarning,
                         )
-                    await self.update_work_pool(
-                        work_pool_name=work_pool.name,
-                        work_pool=WorkPoolUpdate.model_validate(
-                            work_pool.model_dump(exclude={"name", "type"})
-                        ),
+                    await self.update_work_pool_type_and_template(
+                        name=existing_work_pool.name,
+                        type=PREFECT_MANAGED,
+                        template=template,
                     )
                     response = await self.request(
                         "GET",
                         "/work_pools/{name}",
-                        path_params={"name": work_pool.name},
+                        path_params={"name": name},
                     )
                 else:
                     raise ObjectAlreadyExists(http_exc=e) from e
@@ -125,10 +101,11 @@ class WorkPoolAsyncClient(BaseAsyncClient):
 
         return WorkPool.model_validate(response.json())
 
-    async def update_work_pool(
+    async def update_work_pool_type_and_template(
         self,
-        work_pool_name: str,
-        work_pool: "WorkPoolUpdate",
+        name: str,
+        type: str,
+        template: dict[str, Any],
     ) -> None:
         """
         Updates a work pool.
@@ -141,30 +118,8 @@ class WorkPoolAsyncClient(BaseAsyncClient):
             await self.request(
                 "PATCH",
                 "/work_pools/{name}",
-                path_params={"name": work_pool_name},
-                json=work_pool.model_dump(mode="json", exclude_unset=True),
-            )
-        except HTTPStatusError as e:
-            if e.response.status_code == 404:
-                raise ObjectNotFound(http_exc=e) from e
-            else:
-                raise
-
-    async def delete_work_pool(
-        self,
-        work_pool_name: str,
-    ) -> None:
-        """
-        Deletes a work pool.
-
-        Args:
-            work_pool_name: Name of the work pool to delete.
-        """
-        try:
-            await self.request(
-                "DELETE",
-                "/work_pools/{name}",
-                path_params={"name": work_pool_name},
+                path_params={"name": name},
+                json={"type": type, "base_job_template": template},
             )
         except HTTPStatusError as e:
             if e.response.status_code == 404:

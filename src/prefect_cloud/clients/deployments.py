@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Union
 
 from httpx import HTTPStatusError, RequestError
-from pydantic import TypeAdapter
 from prefect_cloud.utilities.exception import ObjectNotFound
 from prefect_cloud.clients.base import BaseAsyncClient
 from prefect_cloud.utilities.generics import validate_list
@@ -11,23 +10,12 @@ from prefect_cloud.utilities.generics import validate_list
 if TYPE_CHECKING:
     from uuid import UUID
     from prefect_cloud.schemas.actions import (
-        DeploymentScheduleCreate,
         DeploymentUpdate,
     )
-    from prefect_cloud.schemas.filters import (
-        DeploymentFilter,
-        FlowFilter,
-        FlowRunFilter,
-        WorkPoolFilter,
-        WorkQueueFilter,
-        TaskRunFilter,
-    )
-    from prefect_cloud.schemas.objects import ConcurrencyOptions, DeploymentSchedule
+
+    from prefect_cloud.schemas.objects import DeploymentSchedule, FlowRun
     from prefect_cloud.schemas.responses import DeploymentResponse
     from prefect_cloud.schemas.schedules import SCHEDULE_TYPES
-    from prefect_cloud.schemas.sorting import (
-        DeploymentSort,
-    )
 
 
 class DeploymentAsyncClient(BaseAsyncClient):
@@ -35,23 +23,10 @@ class DeploymentAsyncClient(BaseAsyncClient):
         self,
         flow_id: "UUID",
         name: str,
-        version: str | None = None,
-        schedules: list["DeploymentScheduleCreate"] | None = None,
-        concurrency_limit: int | None = None,
-        concurrency_options: "ConcurrencyOptions | None" = None,
-        parameters: dict[str, Any] | None = None,
-        description: str | None = None,
-        work_queue_name: str | None = None,
-        work_pool_name: str | None = None,
-        tags: list[str] | None = None,
-        storage_document_id: "UUID | None" = None,
-        path: str | None = None,
-        entrypoint: str | None = None,
-        infrastructure_document_id: "UUID | None" = None,
-        parameter_openapi_schema: dict[str, Any] | None = None,
-        paused: bool | None = None,
+        entrypoint: str,
+        work_pool_name: str,
         pull_steps: list[dict[str, Any]] | None = None,
-        enforce_parameter_schema: bool | None = None,
+        parameter_openapi_schema: dict[str, Any] | None = None,
         job_variables: dict[str, Any] | None = None,
     ) -> "UUID":
         """
@@ -60,69 +35,41 @@ class DeploymentAsyncClient(BaseAsyncClient):
         Args:
             flow_id: the flow ID to create a deployment for
             name: the name of the deployment
-            version: an optional version string for the deployment
-            tags: an optional list of tags to apply to the deployment
-            storage_document_id: an reference to the storage block document
-                used for the deployed flow
-            infrastructure_document_id: an reference to the infrastructure block document
-                to use for this deployment
+            entrypoint: the entrypoint path for the flow
+            work_pool_name: the name of the work pool to use
+            pull_steps: steps to pull code/data before running the flow
+            parameter_openapi_schema: OpenAPI schema for flow parameters
             job_variables: A dictionary of dot delimited infrastructure overrides that
-                will be applied at runtime; for example `env.CONFIG_KEY=config_value` or
-                `namespace='prefect'`. This argument was previously named `infra_overrides`.
-                Both arguments are supported for backwards compatibility.
-
-        Raises:
-            RequestError: if the deployment was not created for any reason
+                will be applied at runtime
 
         Returns:
             the ID of the deployment in the backend
         """
         from uuid import UUID
-
         from prefect_cloud.schemas.actions import DeploymentCreate
 
         if parameter_openapi_schema is None:
             parameter_openapi_schema = {}
+
         deployment_create = DeploymentCreate(
             flow_id=flow_id,
             name=name,
-            version=version,
-            parameters=dict(parameters or {}),
-            tags=list(tags or []),
-            work_queue_name=work_queue_name,
-            description=description,
-            storage_document_id=storage_document_id,
-            path=path,
             entrypoint=entrypoint,
-            infrastructure_document_id=infrastructure_document_id,
-            job_variables=dict(job_variables or {}),
-            parameter_openapi_schema=parameter_openapi_schema,
-            paused=paused,
-            schedules=schedules or [],
-            concurrency_limit=concurrency_limit,
-            concurrency_options=concurrency_options,
+            work_pool_name=work_pool_name,
             pull_steps=pull_steps,
-            enforce_parameter_schema=enforce_parameter_schema,
+            parameter_openapi_schema=parameter_openapi_schema,
+            job_variables=dict(job_variables or {}),
         )
-
-        if work_pool_name is not None:
-            deployment_create.work_pool_name = work_pool_name
 
         # Exclude newer fields that are not set to avoid compatibility issues
         exclude = {
             field
-            for field in ["work_pool_name", "work_queue_name"]
+            for field in ["work_pool_name"]
             if field not in deployment_create.model_fields_set
         }
 
-        if deployment_create.paused is None:
-            exclude.add("paused")
-
         if deployment_create.pull_steps is None:
             exclude.add("pull_steps")
-
-        if deployment_create.enforce_parameter_schema is None:
-            exclude.add("enforce_parameter_schema")
 
         json = deployment_create.model_dump(mode="json", exclude=exclude)
         response = await self.request(
@@ -187,12 +134,14 @@ class DeploymentAsyncClient(BaseAsyncClient):
                 "/deployments/{id}",
                 path_params={"id": deployment_id},
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise ObjectNotFound(http_exc=e) from e
             else:
                 raise
-        return TypeAdapter(DeploymentResponse).validate_json(response.json())
+
+        return DeploymentResponse.model_validate(response.json())
 
     async def read_deployment_by_name(
         self,
@@ -235,17 +184,10 @@ class DeploymentAsyncClient(BaseAsyncClient):
 
         return DeploymentResponse.model_validate(response.json())
 
-    async def read_deployments(
+    async def read_all_deployments(
         self,
         *,
-        flow_filter: "FlowFilter | None" = None,
-        flow_run_filter: "FlowRunFilter | None" = None,
-        task_run_filter: "TaskRunFilter | None" = None,
-        deployment_filter: "DeploymentFilter | None" = None,
-        work_pool_filter: "WorkPoolFilter | None" = None,
-        work_queue_filter: "WorkQueueFilter | None" = None,
         limit: int | None = None,
-        sort: "DeploymentSort | None" = None,
         offset: int = 0,
     ) -> list["DeploymentResponse"]:
         """
@@ -253,12 +195,6 @@ class DeploymentAsyncClient(BaseAsyncClient):
         the provided criteria will be returned.
 
         Args:
-            flow_filter: filter criteria for flows
-            flow_run_filter: filter criteria for flow runs
-            task_run_filter: filter criteria for task runs
-            deployment_filter: filter criteria for deployments
-            work_pool_filter: filter criteria for work pools
-            work_queue_filter: filter criteria for work pool queues
             limit: a limit for the deployment query
             offset: an offset for the deployment query
 
@@ -269,27 +205,9 @@ class DeploymentAsyncClient(BaseAsyncClient):
         from prefect_cloud.schemas.responses import DeploymentResponse
 
         body: dict[str, Any] = {
-            "flows": flow_filter.model_dump(mode="json") if flow_filter else None,
-            "flow_runs": (
-                flow_run_filter.model_dump(mode="json", exclude_unset=True)
-                if flow_run_filter
-                else None
-            ),
-            "task_runs": (
-                task_run_filter.model_dump(mode="json") if task_run_filter else None
-            ),
-            "deployments": (
-                deployment_filter.model_dump(mode="json") if deployment_filter else None
-            ),
-            "work_pools": (
-                work_pool_filter.model_dump(mode="json") if work_pool_filter else None
-            ),
-            "work_pool_queues": (
-                work_queue_filter.model_dump(mode="json") if work_queue_filter else None
-            ),
             "limit": limit,
             "offset": offset,
-            "sort": sort,
+            "sort": None,
         }
 
         response = await self.request("POST", "/deployments/filter", json=body)
@@ -387,12 +305,11 @@ class DeploymentAsyncClient(BaseAsyncClient):
                 raise
         return validate_list(DeploymentSchedule, response.json())
 
-    async def update_deployment_schedule(
+    async def update_deployment_schedule_active(
         self,
         deployment_id: "UUID",
         schedule_id: "UUID",
         active: bool | None = None,
-        schedule: "SCHEDULE_TYPES | None" = None,
     ) -> None:
         """
         Update a deployment schedule by ID.
@@ -401,25 +318,13 @@ class DeploymentAsyncClient(BaseAsyncClient):
             deployment_id: the deployment ID
             schedule_id: the deployment schedule ID of interest
             active: whether or not the schedule should be active
-            schedule: the cron, rrule, or interval schedule this deployment schedule should use
         """
-        from prefect_cloud.schemas.actions import DeploymentScheduleUpdate
-
-        kwargs: dict[str, Any] = {}
-        if active is not None:
-            kwargs["active"] = active
-        if schedule is not None:
-            kwargs["schedule"] = schedule
-
-        deployment_schedule_update = DeploymentScheduleUpdate(**kwargs)
-        json = deployment_schedule_update.model_dump(mode="json", exclude_unset=True)
-
         try:
             await self.request(
                 "PATCH",
                 "/deployments/{id}/schedules/{schedule_id}",
                 path_params={"id": deployment_id, "schedule_id": schedule_id},
-                json=json,
+                json={"active": active},
             )
         except HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -453,3 +358,31 @@ class DeploymentAsyncClient(BaseAsyncClient):
                 raise ObjectNotFound(http_exc=e) from e
             else:
                 raise
+
+    async def create_flow_run_from_deployment_id(
+        self,
+        deployment_id: "UUID",
+    ) -> "FlowRun":
+        """
+        Create a flow run for a deployment.
+
+        Args:
+            deployment_id: The deployment ID to create the flow run from
+
+        Raises:
+            RequestError: if the Prefect API does not successfully create a run for any reason
+
+        Returns:
+            The flow run model
+        """
+
+        from prefect_cloud.schemas.objects import FlowRun
+        from prefect_cloud.schemas.objects import StateType
+
+        response = await self.request(
+            "POST",
+            "/deployments/{id}/create_flow_run",
+            path_params={"id": deployment_id},
+            json={"state": {"type": StateType.SCHEDULED}},
+        )
+        return FlowRun.model_validate(response.json())

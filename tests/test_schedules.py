@@ -1,13 +1,12 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-import prefect.main  # noqa: F401
 import pytest
 import respx
 from httpx import Response
-from prefect.client.schemas.objects import DeploymentSchedule, Flow, FlowRun
-from prefect.client.schemas.responses import DeploymentResponse
-from prefect.client.schemas.schedules import CronSchedule
+from prefect_cloud.schemas.objects import DeploymentSchedule, Flow, FlowRun
+from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.schemas.schedules import CronSchedule
 
 from prefect_cloud import deployments
 
@@ -60,6 +59,7 @@ def mock_deployment_with_schedule(
 ) -> DeploymentResponse:
     mock_deployment.schedules = [
         DeploymentSchedule(
+            deployment_id=mock_deployment.id,
             id=uuid4(),
             schedule=CronSchedule(
                 cron="0 0 * * *",
@@ -109,6 +109,7 @@ async def test_schedule_adds_new_schedule(
             201,
             json=[
                 DeploymentSchedule(
+                    id=uuid4(),
                     schedule=CronSchedule(
                         cron="0 12 * * *",
                         timezone="UTC",
@@ -150,6 +151,7 @@ async def test_schedule_removes_prior_schedules(
             201,
             json=[
                 DeploymentSchedule(
+                    id=uuid4(),
                     schedule=CronSchedule(
                         cron="0 12 * * *",
                         timezone="UTC",
@@ -179,6 +181,7 @@ async def test_schedule_accepts_deployment_name(
             201,
             json=[
                 DeploymentSchedule(
+                    id=uuid4(),
                     schedule=CronSchedule(
                         cron="0 12 * * *",
                         timezone="UTC",

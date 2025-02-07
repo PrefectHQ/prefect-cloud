@@ -59,7 +59,7 @@ async def login(api_key: str | None = None, workspace_id_or_slug: str | None = N
     if not api_key:
         api_key = get_api_key()
 
-    if not api_key or not key_is_valid(api_key):
+    if not api_key or not await key_is_valid(api_key):
         api_key = login_interactively()
         if not api_key:
             return
@@ -87,6 +87,14 @@ async def cloud_client(api_key: str) -> AsyncGenerator[PrefectCloudClient, None]
 
     async with PrefectCloudClient(api_url=CLOUD_API_URL, api_key=api_key) as client:
         yield client
+
+
+async def get_prefect_cloud_client() -> PrefectCloudClient:
+    _, api_url, api_key = get_cloud_urls_or_login()
+    return PrefectCloudClient(
+        api_url=api_url,
+        api_key=api_key,
+    )
 
 
 async def get_cloud_urls_or_login() -> tuple[str, str, str]:

@@ -1,16 +1,39 @@
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
+from typing import TYPE_CHECKING, Any, Optional, List
+from uuid import UUID
+from datetime import datetime, timezone
+from pydantic import BaseModel, Field
+from pydantic_extra_types.pendulum_dt import DateTime
 from httpx import HTTPStatusError, RequestError
-
 from prefect_cloud.clients.base import BaseAsyncClient
 from prefect_cloud.utilities.exception import ObjectNotFound
+from prefect_cloud.utilities.generics import validate_list
+from prefect_cloud.schemas.objects import FlowRun
+from prefect_cloud.schemas.sorting import FlowRunSort
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from prefect_cloud.schemas.objects import Flow
+
+
+class FlowRunFilterExpectedStartTime(BaseModel):
+    """Filter by `FlowRun.expected_start_time`."""
+
+    before_: Optional[DateTime] = Field(
+        default=None,
+        description="Only include flow runs scheduled to start at or before this time",
+    )
+    after_: Optional[DateTime] = Field(
+        default=None,
+        description="Only include flow runs scheduled to start at or after this time",
+    )
+
+
+class FlowRunFilterDeploymentId(BaseModel):
+    """Filter by `FlowRun.deployment_id`."""
+
+    any_: Optional[List[UUID]] = Field(
+        default=None, description="A list of flow run deployment ids to include"
+    )
 
 
 class FlowAsyncClient(BaseAsyncClient):
@@ -27,12 +50,9 @@ class FlowAsyncClient(BaseAsyncClient):
         Returns:
             the ID of the flow in the backend
         """
-        from prefect_cloud.schemas.actions import FlowCreate
 
-        flow_data = FlowCreate(name=flow_name)
-        response = await self.request(
-            "POST", "/flows/", json=flow_data.model_dump(mode="json")
-        )
+        flow_data = {"name": flow_name}
+        response = await self.request("POST", "/flows/", json=flow_data)
 
         flow_id = response.json().get("id")
         if not flow_id:
@@ -95,3 +115,75 @@ class FlowAsyncClient(BaseAsyncClient):
         from prefect_cloud.schemas.objects import Flow
 
         return Flow.model_validate(response.json())
+
+    async def read_all_flows(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list["Flow"]:
+        """
+        Query the Prefect API for flows. Only flows matching all criteria will
+        be returned.
+
+        Args:
+            sort: sort criteria for the flows
+            limit: limit for the flow query
+            offset: offset for the flow query
+
+        Returns:
+            a list of Flow model representations of the flows
+        """
+        body: dict[str, Any] = {
+            "sort": None,
+            "limit": limit,
+            "offset": offset,
+        }
+
+        response = await self.request("POST", "/flows/filter", json=body)
+        from prefect_cloud.schemas.objects import Flow
+
+        return validate_list(Flow, response.json())
+
+    async def read_next_scheduled_flow_runs_by_deployment_ids(
+        self,
+        deployment_ids: list[UUID],
+        *,
+        sort: "FlowRunSort | None" = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> "list[FlowRun]":
+        """
+        Query the Prefect API for flow runs. Only flow runs matching all criteria will
+        be returned.
+
+        Args:
+
+            sort: sort criteria for the flow runs
+            limit: limit for the flow run query
+            offset: offset for the flow run query
+
+        Returns:
+            a list of Flow Run model representations
+                of the flow runs
+        """
+
+        expected_start_time = FlowRunFilterExpectedStartTime(
+            after_=datetime.now(timezone.utc)
+        )
+        body: dict[str, Any] = {
+            "deployment_id": FlowRunFilterDeploymentId(
+                any_=deployment_ids
+            ).model_dump_json(),
+            "state": {"any_": ["SCHEDULED"]},
+            "expected_start_time": expected_start_time.model_dump_json(),
+            "sort": sort,
+            "limit": limit,
+            "offset": offset,
+        }
+
+        response = await self.request("POST", "/flow_runs/filter", json=body)
+
+        from prefect_cloud.schemas.objects import FlowRun
+
+        return validate_list(FlowRun, response.json())

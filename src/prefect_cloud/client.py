@@ -2,17 +2,14 @@ from __future__ import annotations
 from typing import Any, Literal, NoReturn, Optional
 from typing_extensions import TypeAlias, Self
 from contextlib import AsyncExitStack
-import httpcore
+
 import httpx
 import asyncio
 from uuid import UUID
 from prefect_cloud.schemas.actions import (
-    WorkPoolCreate,
     BlockDocumentCreate,
-    BlockDocumentUpdate,
 )
 
-from prefect_cloud.schemas.filters import WorkPoolFilter, WorkPoolFilterType
 from prefect_cloud.utilities.exception import ObjectNotFound
 from logging import getLogger
 from prefect.utilities.callables import ParameterSchema
@@ -93,35 +90,10 @@ class PrefectCloudClient(
         self._client = httpx.AsyncClient(**httpx_settings)
         self._loop = None
 
-        # See https://www.python-httpx.org/advanced/#custom-transports
-        #
-        # If we're using an HTTP/S client (not the ephemeral client), adjust the
-        # transport to adds retries _after_ it is instantiated. If we alter the transport
-        # before instantiation, the transport will not be aware of proxies unless we
-        # reproduce all of the logic to make it so.
-        #
-        # Only alter the transport to set our default of 3 retries, don't modify any
-        # transport a user may have provided via httpx_settings.
-        #
-        # Making liberal use of getattr and isinstance checks here to avoid any
-        # surprises if the internals of httpx or httpcore change on us
-        if not httpx_settings.get("transport"):
-            transport_for_url = getattr(self._client, "_transport_for_url", None)
-            if callable(transport_for_url):
-                server_transport = transport_for_url(httpx.URL(api_url))
-                if isinstance(server_transport, httpx.AsyncHTTPTransport):
-                    pool = getattr(server_transport, "_pool", None)
-                    if isinstance(pool, httpcore.AsyncConnectionPool):
-                        setattr(pool, "_retries", 3)
-
     async def ensure_managed_work_pool(
         self, name: str = settings.default_managed_work_pool_name
     ) -> str:
-        work_pools = await self.read_work_pools(
-            work_pool_filter=WorkPoolFilter(
-                type=WorkPoolFilterType(any_=[PREFECT_MANAGED])
-            )
-        )
+        work_pools = await self.read_managed_work_pools()
 
         if work_pools:
             return work_pools[0].name
@@ -132,12 +104,9 @@ class PrefectCloudClient(
         if template is None:
             raise ValueError("No default base job template found for managed work pool")
 
-        work_pool = await self.create_work_pool(
-            work_pool=WorkPoolCreate(
-                name=name,
-                type=PREFECT_MANAGED,
-                base_job_template=template,
-            ),
+        work_pool = await self.create_work_pool_managed_by_name(
+            name=name,
+            template=template,
             overwrite=True,
         )
 
@@ -172,14 +141,11 @@ class PrefectCloudClient(
             existing_block = await self.read_block_document_by_name(
                 name, block_type_slug="secret"
             )
-            await self.update_block_document(
+            await self.update_block_document_value(
                 block_document_id=existing_block.id,
-                block_document=BlockDocumentUpdate(
-                    data={
-                        "value": credentials,
-                    },
-                ),
+                value=credentials,
             )
+
         except ObjectNotFound:
             secret_block_type = await self.read_block_type_by_slug("secret")
             secret_block_schema = (
@@ -187,6 +153,9 @@ class PrefectCloudClient(
                     block_type_id=secret_block_type.id
                 )
             )
+            if secret_block_schema is None:
+                raise ValueError("No secret block schema found")
+
             await self.create_block_document(
                 block_document=BlockDocumentCreate(
                     name=name,
@@ -257,7 +226,7 @@ class PrefectCloudClient(
         deployment = await self.read_deployment(deployment_id)
 
         for schedule in deployment.schedules:
-            await self.update_deployment_schedule(
+            await self.update_deployment_schedule_active(
                 deployment.id, schedule.id, active=False
             )
 
@@ -265,13 +234,13 @@ class PrefectCloudClient(
         deployment = await self.read_deployment(deployment_id)
 
         for schedule in deployment.schedules:
-            await self.update_deployment_schedule(
+            await self.update_deployment_schedule_active(
                 deployment.id, schedule.id, active=True
             )
 
 
-def get_prefect_cloud_client() -> PrefectCloudClient:
-    _, api_url, api_key = auth.get_cloud_urls_or_login()
+async def get_prefect_cloud_client() -> PrefectCloudClient:
+    _, api_url, api_key = await auth.get_cloud_urls_or_login()
     return PrefectCloudClient(
         api_url=api_url,
         api_key=api_key,

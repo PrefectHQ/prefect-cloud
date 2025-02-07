@@ -2,13 +2,11 @@ from __future__ import annotations
 
 
 from functools import partial
-from typing import Annotated, Any, ClassVar, Optional, Literal
-from uuid import UUID
-
+from typing import Annotated, Any, Optional, Literal, Generic
+import datetime
+from uuid import UUID, uuid4
 from pydantic import (
-    ConfigDict,
     Field,
-    HttpUrl,
     SerializationInfo,
     SerializerFunctionWrapHandler,
     field_validator,
@@ -23,6 +21,7 @@ from prefect_cloud.utilities.validators import (
     validate_block_document_name,
     validate_default_queue_id_not_none,
     validate_name_present_on_nonanonymous_blocks,
+    get_or_create_run_name,
 )
 from prefect_cloud.schemas.schedules import SCHEDULE_TYPES
 from prefect_cloud.types import (
@@ -33,7 +32,9 @@ from prefect_cloud.types import (
 )
 from prefect_cloud.types import DateTime
 from prefect_cloud.utilities.collections import AutoEnum, visit_collection
-from prefect_cloud.schemas.fields import CreatedBy, UpdatedBy
+
+
+from prefect_cloud.utilities.names import generate_slug
 
 DEFAULT_BLOCK_SCHEMA_VERSION: Literal["non-versioned"] = "non-versioned"
 R = TypeVar("R", default=Any)
@@ -111,33 +112,193 @@ class ConcurrencyLimitConfig(BaseModel):
     collision_strategy: ConcurrencyLimitStrategy = ConcurrencyLimitStrategy.ENQUEUE
 
 
+class StateDetails(BaseModel):
+    flow_run_id: Optional[UUID] = None
+    task_run_id: Optional[UUID] = None
+    # for task runs that represent subflows, the subflow's run ID
+    child_flow_run_id: Optional[UUID] = None
+    scheduled_time: Optional[DateTime] = None
+    cache_key: Optional[str] = None
+    cache_expiration: Optional[DateTime] = None
+    deferred: Optional[bool] = None
+    untrackable_result: bool = False
+    pause_timeout: Optional[DateTime] = None
+    pause_reschedule: bool = False
+    pause_key: Optional[str] = None
+    run_input_keyset: Optional[dict[str, str]] = None
+    refresh_cache: Optional[bool] = None
+    retriable: Optional[bool] = None
+    transition_id: Optional[UUID] = None
+    task_parameters_id: Optional[UUID] = None
+    # Captures the trace_id and span_id of the span where this state was created
+    traceparent: Optional[str] = None
+
+
+def data_discriminator(x: Any) -> str:
+    if isinstance(x, dict) and "storage_key" in x:
+        return "ResultRecordMetadata"
+    return "Any"
+
+
+class State(BaseModel, Generic[R]):
+    """
+    The state of a run.
+    """
+
+    type: StateType
+    name: Optional[str] = Field(default=None)
+    timestamp: DateTime = Field(default_factory=lambda: DateTime.now("UTC"))
+    message: Optional[str] = Field(default=None, examples=["Run started"])
+    state_details: StateDetails = Field(default_factory=StateDetails)
+
+
+class FlowRun(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    name: str = Field(
+        default_factory=lambda: generate_slug(2),
+        description=(
+            "The name of the flow run. Defaults to a random slug if not specified."
+        ),
+        examples=["my-flow-run"],
+    )
+    flow_id: UUID = Field(default=..., description="The id of the flow being run.")
+    state_id: Optional[UUID] = Field(
+        default=None, description="The id of the flow run's current state."
+    )
+    deployment_id: Optional[UUID] = Field(
+        default=None,
+        description=(
+            "The id of the deployment associated with this flow run, if available."
+        ),
+    )
+    deployment_version: Optional[str] = Field(
+        default=None,
+        description="The version of the deployment associated with this flow run.",
+        examples=["1.0"],
+    )
+    work_queue_name: Optional[str] = Field(
+        default=None, description="The work queue that handled this flow run."
+    )
+    flow_version: Optional[str] = Field(
+        default=None,
+        description="The version of the flow executed in this flow run.",
+        examples=["1.0"],
+    )
+    parameters: dict[str, Any] = Field(
+        default_factory=dict, description="Parameters for the flow run."
+    )
+    idempotency_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "An optional idempotency key for the flow run. Used to ensure the same flow"
+            " run is not created multiple times."
+        ),
+    )
+    context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional context for the flow run.",
+        examples=[{"my_var": "my_val"}],
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="A list of tags on the flow run",
+        examples=[["tag-1", "tag-2"]],
+    )
+    labels: KeyValueLabelsField = Field(default_factory=dict)
+    parent_task_run_id: Optional[UUID] = Field(
+        default=None,
+        description=(
+            "If the flow run is a subflow, the id of the 'dummy' task in the parent"
+            " flow used to track subflow state."
+        ),
+    )
+    run_count: int = Field(
+        default=0, description="The number of times the flow run was executed."
+    )
+    expected_start_time: Optional[DateTime] = Field(
+        default=None,
+        description="The flow run's expected start time.",
+    )
+    next_scheduled_start_time: Optional[DateTime] = Field(
+        default=None,
+        description="The next time the flow run is scheduled to start.",
+    )
+    start_time: Optional[DateTime] = Field(
+        default=None, description="The actual start time."
+    )
+    end_time: Optional[DateTime] = Field(
+        default=None, description="The actual end time."
+    )
+    total_run_time: datetime.timedelta = Field(
+        default=datetime.timedelta(0),
+        description=(
+            "Total run time. If the flow run was executed multiple times, the time of"
+            " each run will be summed."
+        ),
+    )
+    estimated_run_time: datetime.timedelta = Field(
+        default=datetime.timedelta(0),
+        description="A real-time estimate of the total run time.",
+    )
+    estimated_start_time_delta: datetime.timedelta = Field(
+        default=datetime.timedelta(0),
+        description="The difference between actual and expected start time.",
+    )
+
+    work_queue_id: Optional[UUID] = Field(
+        default=None, description="The id of the run's work pool queue."
+    )
+
+    work_pool_id: Optional[UUID] = Field(
+        default=None, description="The work pool with which the queue is associated."
+    )
+    work_pool_name: Optional[str] = Field(
+        default=None,
+        description="The name of the flow run's work pool.",
+        examples=["my-work-pool"],
+    )
+    state: Optional[State] = Field(
+        default=None,
+        description="The state of the flow run.",
+        examples=["State(type=StateType.COMPLETED)"],
+    )
+    job_variables: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Job variables for the flow run.",
+    )
+
+    def __eq__(self, other: Any) -> bool:
+        """
+        Check for "equality" to another flow run schema
+
+        Estimates times are rolling and will always change with repeated queries for
+        a flow run so we ignore them during equality checks.
+        """
+        if isinstance(other, FlowRun):
+            exclude_fields = {"estimated_run_time", "estimated_start_time_delta"}
+            return self.model_dump(exclude=exclude_fields) == other.model_dump(
+                exclude=exclude_fields
+            )
+        return super().__eq__(other)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def set_default_name(cls, name: Optional[str]) -> str:
+        return get_or_create_run_name(name)
+
+
 class BlockType(BaseModel):
     """An ORM representation of a block type"""
 
+    id: UUID = Field(default=..., description="The ID of the block type.")
     name: Name = Field(default=..., description="A block type's name")
     slug: str = Field(default=..., description="A block type's slug")
-    logo_url: Optional[HttpUrl] = Field(
-        default=None, description="Web URL for the block type's logo"
-    )
-    documentation_url: Optional[HttpUrl] = Field(
-        default=None, description="Web URL for the block type's documentation"
-    )
-    description: Optional[str] = Field(
-        default=None,
-        description="A short blurb about the corresponding block's intended use",
-    )
-    code_example: Optional[str] = Field(
-        default=None,
-        description="A code snippet demonstrating use of the corresponding block",
-    )
-    is_protected: bool = Field(
-        default=False, description="Protected block types cannot be modified via API."
-    )
 
 
 class BlockSchema(BaseModel):
     """A representation of a block schema."""
 
+    id: UUID = Field(default=..., description="The ID of the block schema.")
     checksum: str = Field(default=..., description="The block schema's unique checksum")
     fields: dict[str, Any] = Field(
         default_factory=dict, description="The block schema's field schema"
@@ -146,19 +307,12 @@ class BlockSchema(BaseModel):
     block_type: Optional[BlockType] = Field(
         default=None, description="The associated block type"
     )
-    capabilities: list[str] = Field(
-        default_factory=list,
-        description="A list of Block capabilities",
-    )
-    version: str = Field(
-        default=DEFAULT_BLOCK_SCHEMA_VERSION,
-        description="Human readable identifier for the block schema",
-    )
 
 
 class BlockDocument(BaseModel):
     """An ORM representation of a block document."""
 
+    id: UUID = Field(default=..., description="The ID of the block document.")
     name: Optional[Name] = Field(
         default=None,
         description=(
@@ -176,16 +330,6 @@ class BlockDocument(BaseModel):
     block_type_name: Optional[str] = Field(None, description="A block type name")
     block_type: Optional[BlockType] = Field(
         default=None, description="The associated block type"
-    )
-    block_document_references: dict[str, dict[str, Any]] = Field(
-        default_factory=dict, description="Record of the block document's references"
-    )
-    is_anonymous: bool = Field(
-        default=False,
-        description=(
-            "Whether the block is anonymous (anonymous blocks are usually created by"
-            " Prefect automatically)"
-        ),
     )
 
     _validate_name_format = field_validator("name")(validate_block_document_name)
@@ -212,6 +356,7 @@ class BlockDocument(BaseModel):
 class Flow(BaseModel):
     """An ORM representation of flow data."""
 
+    id: UUID = Field(default=..., description="The ID of the flow.")
     name: Name = Field(
         default=..., description="The name of the flow", examples=["my-flow"]
     )
@@ -224,6 +369,10 @@ class Flow(BaseModel):
 
 
 class DeploymentSchedule(BaseModel):
+    id: UUID = Field(
+        default=...,
+        description="The ID of the deployment schedule.",
+    )
     deployment_id: Optional[UUID] = Field(
         default=None,
         description="The deployment id associated with this schedule.",
@@ -287,10 +436,6 @@ class Deployment(BaseModel):
             " be scheduled."
         ),
     )
-    last_polled: Optional[DateTime] = Field(
-        default=None,
-        description="The last time the deployment was polled for status updates.",
-    )
     parameter_openapi_schema: Optional[dict[str, Any]] = Field(
         default=None,
         description="The parameter schema of the flow, including defaults.",
@@ -315,14 +460,6 @@ class Deployment(BaseModel):
     infrastructure_document_id: Optional[UUID] = Field(
         default=None,
         description="The block document defining infrastructure to use for flow runs.",
-    )
-    created_by: Optional[CreatedBy] = Field(
-        default=None,
-        description="Optional information about the creator of this deployment.",
-    )
-    updated_by: Optional[UpdatedBy] = Field(
-        default=None,
-        description="Optional information about the updater of this deployment.",
     )
     work_queue_id: Optional[UUID] = Field(
         default=None,
@@ -356,9 +493,6 @@ class WorkPool(BaseModel):
 
     name: Name = Field(
         description="The name of the work pool.",
-    )
-    description: Optional[str] = Field(
-        default=None, description="A description of the work pool."
     )
     type: str = Field(description="The work pool type.")
     base_job_template: dict[str, Any] = Field(
@@ -395,24 +529,3 @@ class WorkPool(BaseModel):
     @classmethod
     def helpful_error_for_missing_default_queue_id(cls, v: Optional[UUID]) -> UUID:
         return validate_default_queue_id_not_none(v)
-
-
-class Integration(BaseModel):
-    """A representation of an installed Prefect integration."""
-
-    name: str = Field(description="The name of the Prefect integration.")
-    version: str = Field(description="The version of the Prefect integration.")
-
-
-class WorkerMetadata(BaseModel):
-    """
-    Worker metadata.
-
-    We depend on the structure of `integrations`, but otherwise, worker classes
-    should support flexible metadata.
-    """
-
-    integrations: list[Integration] = Field(
-        default=..., description="Prefect integrations installed in the worker."
-    )
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="allow")

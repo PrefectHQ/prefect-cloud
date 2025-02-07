@@ -4,9 +4,9 @@ import prefect.main  # noqa: F401
 import pytest
 import respx
 from httpx import Response
-from prefect.client.schemas.objects import FlowRun
-from prefect.client.schemas.responses import DeploymentResponse
-from prefect.exceptions import ObjectNotFound
+from prefect_cloud.schemas.objects import FlowRun
+from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.utilities.exception import ObjectNotFound
 
 from prefect_cloud import deployments
 
@@ -62,8 +62,6 @@ def mock_flow_run() -> FlowRun:
         name="test-run",
         state_type="SCHEDULED",
         expected_start_time=None,
-        created=None,
-        updated=None,
     )
 
 

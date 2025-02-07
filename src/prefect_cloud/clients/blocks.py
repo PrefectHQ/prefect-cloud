@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
     from prefect_cloud.schemas.actions import (
         BlockDocumentCreate,
-        BlockDocumentUpdate,
     )
     from prefect_cloud.schemas.objects import (
         BlockDocument,
@@ -60,10 +59,10 @@ class BlocksDocumentAsyncClient(BaseAsyncClient):
 
         return BlockDocument.model_validate(response.json())
 
-    async def update_block_document(
+    async def update_block_document_value(
         self,
         block_document_id: "UUID",
-        block_document: "BlockDocumentUpdate",
+        value: str,
     ) -> None:
         """
         Update a block document in the Prefect API.
@@ -73,11 +72,7 @@ class BlocksDocumentAsyncClient(BaseAsyncClient):
                 "PATCH",
                 "/block_documents/{id}",
                 path_params={"id": block_document_id},
-                json=block_document.model_dump(
-                    mode="json",
-                    exclude_unset=True,
-                    include={"data", "merge_existing_data", "block_schema_id"},
-                ),
+                json={"data": {"value": value}},
             )
         except HTTPStatusError as e:
             if e.response.status_code == 404:

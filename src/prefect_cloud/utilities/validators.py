@@ -14,8 +14,7 @@ import urllib.parse
 import warnings
 from collections.abc import Iterable, Mapping, MutableMapping
 from copy import copy
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, Union, overload
+from typing import Any, Optional, TypeVar, Union, overload
 from uuid import UUID
 
 import jsonschema
@@ -23,12 +22,8 @@ import pendulum
 import pendulum.tz
 
 from prefect_cloud.utilities.collections import isiterable
-from prefect.utilities.filesystem import relative_path_to_current_platform
-from prefect.utilities.importtools import from_qualified_name
-from prefect.utilities.names import generate_slug
+from prefect_cloud.utilities.names import generate_slug
 
-if TYPE_CHECKING:
-    from prefect.serializers import Serializer
 
 T = TypeVar("T")
 M = TypeVar("M", bound=Mapping[str, Any])
@@ -365,90 +360,6 @@ def validate_basepath(value: str) -> str:
     return value
 
 
-### SERIALIZER SCHEMA VALIDATORS ###
-
-
-def validate_picklelib(value: str) -> str:
-    """
-    Check that the given pickle library is importable and has dumps/loads methods.
-    """
-    try:
-        pickler = from_qualified_name(value)
-    except (ImportError, AttributeError) as exc:
-        raise ValueError(
-            f"Failed to import requested pickle library: {value!r}."
-        ) from exc
-
-    if not callable(getattr(pickler, "dumps", None)):
-        raise ValueError(f"Pickle library at {value!r} does not have a 'dumps' method.")
-
-    if not callable(getattr(pickler, "loads", None)):
-        raise ValueError(f"Pickle library at {value!r} does not have a 'loads' method.")
-
-    return value
-
-
-def validate_dump_kwargs(value: M) -> M:
-    # `default` is set by `object_encoder`. A user provided callable would make this
-    # class unserializable anyway.
-    if "default" in value:
-        raise ValueError("`default` cannot be provided. Use `object_encoder` instead.")
-    return value
-
-
-def validate_load_kwargs(value: M) -> M:
-    # `object_hook` is set by `object_decoder`. A user provided callable would make
-    # this class unserializable anyway.
-    if "object_hook" in value:
-        raise ValueError(
-            "`object_hook` cannot be provided. Use `object_decoder` instead."
-        )
-    return value
-
-
-@overload
-def cast_type_names_to_serializers(value: str) -> "Serializer[Any]": ...
-
-
-@overload
-def cast_type_names_to_serializers(value: "Serializer[T]") -> "Serializer[T]": ...
-
-
-def cast_type_names_to_serializers(
-    value: Union[str, "Serializer[Any]"],
-) -> "Serializer[Any]":
-    from prefect.serializers import Serializer
-
-    if isinstance(value, str):
-        return Serializer(type=value)
-    return value
-
-
-def validate_compressionlib(value: str) -> str:
-    """
-    Check that the given pickle library is importable and has compress/decompress
-    methods.
-    """
-    try:
-        compressor = from_qualified_name(value)
-    except (ImportError, AttributeError) as exc:
-        raise ValueError(
-            f"Failed to import requested compression library: {value!r}."
-        ) from exc
-
-    if not callable(getattr(compressor, "compress", None)):
-        raise ValueError(
-            f"Compression library at {value!r} does not have a 'compress' method."
-        )
-
-    if not callable(getattr(compressor, "decompress", None)):
-        raise ValueError(
-            f"Compression library at {value!r} does not have a 'decompress' method."
-        )
-
-    return value
-
-
 # TODO: if we use this elsewhere we can change the error message to be more generic
 @overload
 def list_length_50_or_less(v: list[float]) -> list[float]: ...
@@ -605,24 +516,6 @@ def validate_name_present_on_nonanonymous_blocks(values: M) -> M:
     if not values.get("is_anonymous") and not values.get("name"):
         raise ValueError("Names must be provided for block documents.")
     return values
-
-
-### PROCESS JOB CONFIGURATION VALIDATORS ###
-
-
-@overload
-def validate_working_dir(v: str) -> Path: ...
-
-
-@overload
-def validate_working_dir(v: None) -> None: ...
-
-
-def validate_working_dir(v: Optional[Path | str]) -> Optional[Path]:
-    """Make sure that the working directory is formatted for the current platform."""
-    if isinstance(v, str):
-        return relative_path_to_current_platform(v)
-    return v
 
 
 ### UNCATEGORIZED VALIDATORS ###

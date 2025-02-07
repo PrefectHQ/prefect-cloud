@@ -4,8 +4,8 @@ import typer
 import tzlocal
 from prefect.cli._utilities import exit_with_error as _exit_with_error
 from prefect.cli.root import PrefectTyper
-from prefect.client.schemas.objects import DeploymentSchedule
-from prefect.client.schemas.schedules import (
+from prefect_cloud.schemas.objects import DeploymentSchedule
+from prefect_cloud.schemas.schedules import (
     CronSchedule,
     IntervalSchedule,
     RRuleSchedule,
@@ -92,7 +92,7 @@ async def deploy(
         except ValueError as e:
             exit_with_error(str(e), progress=progress)
 
-        async with get_prefect_cloud_client() as client:
+        async with await get_prefect_cloud_client() as client:
             task = progress.add_task("Inspecting code...", total=None)
 
             github_ref = GitHubFileRef.from_url(file)
@@ -131,7 +131,7 @@ async def deploy(
                 # TODO: put back flowify if this a public repo? need to figure that out.
             ]
 
-            _, api_url, _ = auth.get_cloud_urls_or_login()
+            _, api_url, _ = await auth.get_cloud_urls_or_login()
 
             deployment_id = await client.create_managed_deployment(
                 deployment_name,

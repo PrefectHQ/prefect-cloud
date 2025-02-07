@@ -90,20 +90,20 @@ async def test_cloud_client_sets_auth_header(sample_api_key: str):
         assert client._client.base_url == httpx.URL("https://api.prefect.cloud/api/")
 
 
-def test_key_is_valid_with_valid_key(cloud_api: Router, sample_api_key: str):
+async def test_key_is_valid_with_valid_key(cloud_api: Router, sample_api_key: str):
     """API key validation should return True for valid keys."""
     cloud_api.get("https://api.prefect.cloud/api/me/").mock(
         return_value=httpx.Response(200)
     )
-    assert key_is_valid(sample_api_key) is True
+    assert await key_is_valid(sample_api_key) is True
 
 
-def test_key_is_valid_with_invalid_key(cloud_api: Router, sample_api_key: str):
+async def test_key_is_valid_with_invalid_key(cloud_api: Router, sample_api_key: str):
     """API key validation should return False for invalid keys."""
     cloud_api.get("https://api.prefect.cloud/api/me/").mock(
         return_value=httpx.Response(401)
     )
-    assert key_is_valid(sample_api_key) is False
+    assert await key_is_valid(sample_api_key) is False
 
 
 async def test_me_returns_user_info(
@@ -113,7 +113,7 @@ async def test_me_returns_user_info(
     cloud_api.get("https://api.prefect.cloud/api/me/").mock(
         return_value=httpx.Response(200, json=sample_me.model_dump(mode="json"))
     )
-    result = me(sample_api_key)
+    result = await me(sample_api_key)
     assert result == sample_me
 
 
@@ -125,14 +125,14 @@ async def test_me_handles_http_error(cloud_api: Router, sample_api_key: str):
         await me(sample_api_key)
 
 
-def test_get_accounts_returns_accounts(
+async def test_get_accounts_returns_accounts(
     cloud_api: Router, sample_api_key: str, sample_account: Account
 ):
     """get_accounts() should return the list of accounts for the authenticated user."""
     cloud_api.get("https://api.prefect.cloud/api/me/accounts").mock(
         return_value=httpx.Response(200, json=[sample_account.model_dump(mode="json")])
     )
-    result = get_accounts(sample_api_key)
+    result = await get_accounts(sample_api_key)
     assert result == [sample_account]
 
 
@@ -144,7 +144,7 @@ async def test_get_accounts_handles_http_error(cloud_api: Router, sample_api_key
         await get_accounts(sample_api_key)
 
 
-def test_get_workspaces_returns_sorted_workspaces(
+async def test_get_workspaces_returns_sorted_workspaces(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """get_workspaces() should return workspaces sorted by handle."""
@@ -166,7 +166,7 @@ def test_get_workspaces_returns_sorted_workspaces(
             ],
         )
     )
-    result = get_workspaces(sample_api_key)
+    result = await get_workspaces(sample_api_key)
     assert result == [workspace2, sample_workspace]
 
 
@@ -189,7 +189,7 @@ async def test_get_workspaces_handles_http_error(
         ("nonexistent", False),  # Not found
     ],
 )
-def test_lookup_workspace(
+async def test_lookup_workspace(
     cloud_api: Router,
     sample_api_key: str,
     sample_workspace: Workspace,
@@ -203,7 +203,7 @@ def test_lookup_workspace(
         )
     )
 
-    result = lookup_workspace(sample_api_key, identifier)
+    result = await lookup_workspace(sample_api_key, identifier)
 
     if expected_found:
         assert result == sample_workspace
@@ -211,7 +211,7 @@ def test_lookup_workspace(
         assert result is None
 
 
-def test_prompt_for_workspace_single_workspace(
+async def test_prompt_for_workspace_single_workspace(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """prompt_for_workspace() should return the workspace directly if there's only one."""
@@ -221,11 +221,11 @@ def test_prompt_for_workspace_single_workspace(
         )
     )
 
-    result = prompt_for_workspace(sample_api_key)
+    result = await prompt_for_workspace(sample_api_key)
     assert result == sample_workspace
 
 
-def test_prompt_for_workspace_multiple_workspaces(
+async def test_prompt_for_workspace_multiple_workspaces(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """prompt_for_workspace() should prompt user when multiple workspaces exist."""
@@ -250,7 +250,7 @@ def test_prompt_for_workspace_multiple_workspaces(
 
     with patch("prefect_cloud.auth.prompt_select_from_list") as mock_prompt:
         mock_prompt.return_value = sample_workspace.full_handle
-        result = prompt_for_workspace(sample_api_key)
+        result = await prompt_for_workspace(sample_api_key)
         assert result == sample_workspace
         mock_prompt.assert_called_once()
 
@@ -276,6 +276,11 @@ async def test_login_with_invalid_api_key(cloud_api: Router):
     """login() should handle invalid API keys gracefully."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(401))
 
+    # cloud_api.get("/me/workspaces").mock(
+    #     return_value=httpx.Response(
+    #     401, json=[]
+    #     )
+    # )
     with patch("prefect_cloud.auth.login_interactively") as mock_login:
         mock_login.return_value = None
         await login("invalid_key")
@@ -320,24 +325,24 @@ async def test_login_with_workspace_id(
     assert profile["PREFECT_API_URL"] == sample_workspace.api_url
 
 
-def test_login_with_workspace_not_found(cloud_api: Router, sample_api_key: str):
+async def test_login_with_workspace_not_found(cloud_api: Router, sample_api_key: str):
     """login() should handle the case when specified workspace is not found."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(200, json={}))
     cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
-    result = login(sample_api_key, "nonexistent")
+    result = await login(sample_api_key, "nonexistent")
     assert result is None
 
 
-def test_login_with_no_workspaces(cloud_api: Router, sample_api_key: str):
+async def test_login_with_no_workspaces(cloud_api: Router, sample_api_key: str):
     """login() should handle the case when no workspaces are available."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(200))
     cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
 
-    result = login(sample_api_key)
+    result = await login(sample_api_key)
     assert result is None
 
 
-def test_login_with_valid_key_but_workspace_selection_cancelled(
+async def test_login_with_valid_key_but_workspace_selection_cancelled(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """login() should handle cancelled workspace selection."""
@@ -353,7 +358,7 @@ def test_login_with_valid_key_but_workspace_selection_cancelled(
 
     with patch("prefect_cloud.auth.prompt_for_workspace") as mock_prompt:
         mock_prompt.return_value = None
-        result = login(sample_api_key)
+        result = await login(sample_api_key)
         assert result is None
 
 
