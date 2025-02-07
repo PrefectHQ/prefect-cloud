@@ -12,7 +12,7 @@ from pydantic import (
     BaseModel,
 )
 from typing_extensions import TypeVar
-from prefect_cloud.utilities.pydantic import handle_secret_render
+from prefect_cloud.utilities.generics import handle_secret_render
 
 from prefect_cloud.utilities.validators import (
     validate_block_document_name,
@@ -24,7 +24,7 @@ from prefect_cloud.utilities.validators import (
 from prefect_cloud.types import (
     Name,
 )
-from prefect_cloud.utilities.collections import AutoEnum
+from prefect_cloud.utilities.generics import AutoEnum
 
 
 DEFAULT_BLOCK_SCHEMA_VERSION: Literal["non-versioned"] = "non-versioned"

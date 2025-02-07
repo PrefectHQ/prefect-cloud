@@ -32,9 +32,8 @@ from prefect_cloud.schemas.objects import (
     CronSchedule,
 )
 from prefect_cloud.schemas.responses import DeploymentResponse
-from prefect_cloud.utilities.generics import validate_list
+from prefect_cloud.utilities.generics import validate_list, AutoEnum
 from prefect_cloud.settings import settings
-from prefect_cloud.utilities.collections import AutoEnum
 
 PREFECT_MANAGED = "prefect:managed"
 
