@@ -47,9 +47,6 @@ def mock_deployment() -> DeploymentResponse:
         flow_id=uuid4(),
         name="test-deployment",
         schedules=[],
-        is_schedule_active=True,
-        created=None,
-        updated=None,
     )
 
 
