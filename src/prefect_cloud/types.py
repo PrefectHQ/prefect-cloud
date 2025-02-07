@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import Annotated, Any, List, TypeVar
+from typing import Annotated, TypeVar
 
 
 from pydantic import (
@@ -56,15 +54,4 @@ NonEmptyishName = Annotated[
     str,
     Field(pattern=WITHOUT_BANNED_CHARACTERS),
     BeforeValidator(non_emptyish),
-]
-
-
-def cast_none_to_empty_dict(value: Any) -> dict[str, Any]:
-    if value is None:
-        return {}
-    return value
-
-
-ListOfNonEmptyStrings = Annotated[
-    List[str], BeforeValidator(lambda x: [s for s in x if s.strip()])
 ]

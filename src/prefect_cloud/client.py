@@ -1,8 +1,6 @@
 from __future__ import annotations
-from typing import Any, Literal, Union, Optional, List
+from typing import Any, Literal, Union
 from typing_extensions import TypeAlias
-from pydantic import BaseModel, Field
-from pydantic_extra_types.pendulum_dt import DateTime
 from datetime import datetime, timezone
 import httpx
 
@@ -11,7 +9,7 @@ from prefect_cloud.schemas.actions import (
     BlockDocumentCreate,
 )
 
-import warnings
+
 from httpx import HTTPStatusError, RequestError
 from prefect_cloud.utilities.exception import ObjectNotFound, ObjectAlreadyExists
 from logging import getLogger
@@ -36,33 +34,10 @@ from prefect_cloud.utilities.generics import validate_list
 from prefect_cloud.settings import settings
 
 PREFECT_MANAGED = "prefect:managed"
-
-
 HTTP_METHODS: TypeAlias = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
 
 PREFECT_API_REQUEST_TIMEOUT = 60.0
 logger = getLogger(__name__)
-
-
-class FlowRunFilterExpectedStartTime(BaseModel):
-    """Filter by `FlowRun.expected_start_time`."""
-
-    before_: Optional[DateTime] = Field(
-        default=None,
-        description="Only include flow runs scheduled to start at or before this time",
-    )
-    after_: Optional[DateTime] = Field(
-        default=None,
-        description="Only include flow runs scheduled to start at or after this time",
-    )
-
-
-class FlowRunFilterDeploymentId(BaseModel):
-    """Filter by `FlowRun.deployment_id`."""
-
-    any_: Optional[List[UUID]] = Field(
-        default=None, description="A list of flow run deployment ids to include"
-    )
 
 
 class PrefectCloudClient(httpx.AsyncClient):
@@ -128,7 +103,6 @@ class PrefectCloudClient(httpx.AsyncClient):
         self,
         name: str,
         template: dict[str, Any],
-        overwrite: bool = False,
     ) -> "WorkPool":
         """
         Creates a work pool with the provided configuration.
@@ -153,24 +127,7 @@ class PrefectCloudClient(httpx.AsyncClient):
             )
         except HTTPStatusError as e:
             if e.response.status_code == 409:
-                if overwrite:
-                    existing_work_pool = await self.read_work_pool_by_name(name=name)
-                    if existing_work_pool.type != PREFECT_MANAGED:
-                        warnings.warn(
-                            "Overwriting work pool type is not supported. Ignoring provided type.",
-                            category=UserWarning,
-                        )
-                    await self.update_work_pool_type_and_template(
-                        name=existing_work_pool.name,
-                        type=PREFECT_MANAGED,
-                        template=template,
-                    )
-                    response = await self.request(
-                        "GET",
-                        f"/work_pools/{name}",
-                    )
-                else:
-                    raise ObjectAlreadyExists(http_exc=e) from e
+                raise ObjectAlreadyExists(http_exc=e) from e
             else:
                 raise
 
@@ -228,7 +185,6 @@ class PrefectCloudClient(httpx.AsyncClient):
         Returns:
             the ID of the deployment in the backend
         """
-        from uuid import UUID
         from prefect_cloud.schemas.actions import DeploymentCreate
 
         if parameter_openapi_schema is None:
@@ -787,15 +743,10 @@ class PrefectCloudClient(httpx.AsyncClient):
                 of the flow runs
         """
 
-        expected_start_time = FlowRunFilterExpectedStartTime(
-            after_=datetime.now(timezone.utc)
-        )
         body: dict[str, Any] = {
-            "deployment_id": FlowRunFilterDeploymentId(
-                any_=deployment_ids
-            ).model_dump_json(),
+            "deployment_id": {"any_": [str(id) for id in deployment_ids]},
             "state": {"any_": ["SCHEDULED"]},
-            "expected_start_time": expected_start_time.model_dump_json(),
+            "expected_start_time": {"after_": datetime.now(timezone.utc).isoformat()},
             "sort": "EXPECTED_START_TIME_ASC",
             "limit": limit,
             "offset": offset,
@@ -824,7 +775,6 @@ class PrefectCloudClient(httpx.AsyncClient):
         work_pool = await self.create_work_pool_managed_by_name(
             name=name,
             template=template,
-            overwrite=True,
         )
 
         return work_pool.name

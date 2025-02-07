@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-
-from typing import Any, Optional, Literal
+import re
+from typing import Any, Optional
 from uuid import UUID, uuid4
 from pydantic import (
     Field,
@@ -11,18 +11,10 @@ from pydantic import (
     model_serializer,
     BaseModel,
 )
-from typing_extensions import TypeVar
 from prefect_cloud.utilities.generics import handle_secret_render
 
-import re
 
-from prefect_cloud.types import (
-    Name,
-)
-
-
-DEFAULT_BLOCK_SCHEMA_VERSION: Literal["non-versioned"] = "non-versioned"
-R = TypeVar("R", default=Any)
+from prefect_cloud.types import Name
 
 
 def validate_block_document_name(value: Optional[str]) -> Optional[str]:
@@ -119,72 +111,6 @@ class DeploymentSchedule(BaseModel):
     )
 
 
-class Deployment(BaseModel):
-    """An ORM representation of deployment data."""
-
-    name: Name = Field(default=..., description="The name of the deployment.")
-    description: Optional[str] = Field(
-        default=None, description="A description for the deployment."
-    )
-    flow_id: UUID = Field(
-        default=..., description="The flow id associated with the deployment."
-    )
-    paused: bool = Field(
-        default=False, description="Whether or not the deployment is paused."
-    )
-    schedules: list[DeploymentSchedule] = Field(
-        default_factory=list, description="A list of schedules for the deployment."
-    )
-    job_variables: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Overrides to apply to flow run infrastructure at runtime.",
-    )
-    parameters: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Parameters for flow runs scheduled by the deployment.",
-    )
-    pull_steps: Optional[list[dict[str, Any]]] = Field(
-        default=None,
-        description="Pull steps for cloning and running this deployment.",
-    )
-    work_queue_name: Optional[str] = Field(
-        default=None,
-        description=(
-            "The work queue for the deployment. If no work queue is set, work will not"
-            " be scheduled."
-        ),
-    )
-    parameter_openapi_schema: Optional[dict[str, Any]] = Field(
-        default=None,
-        description="The parameter schema of the flow, including defaults.",
-    )
-    path: Optional[str] = Field(
-        default=None,
-        description=(
-            "The path to the working directory for the workflow, relative to remote"
-            " storage or an absolute path."
-        ),
-    )
-    entrypoint: Optional[str] = Field(
-        default=None,
-        description=(
-            "The path to the entrypoint for the workflow, relative to the `path`."
-        ),
-    )
-    work_queue_id: Optional[UUID] = Field(
-        default=None,
-        description=(
-            "The id of the work pool queue to which this deployment is assigned."
-        ),
-    )
-    enforce_parameter_schema: bool = Field(
-        default=True,
-        description=(
-            "Whether or not the deployment should enforce the parameter schema."
-        ),
-    )
-
-
 class WorkPool(BaseModel):
     """An ORM representation of a work pool"""
 
@@ -195,53 +121,15 @@ class WorkPool(BaseModel):
     base_job_template: dict[str, Any] = Field(
         default_factory=dict, description="The work pool's base job template."
     )
-    is_paused: bool = Field(
-        default=False,
-        description="Pausing the work pool stops the delivery of all work.",
-    )
-
-    @property
-    def is_push_pool(self) -> bool:
-        return self.type.endswith(":push")
-
-    @property
-    def is_managed_pool(self) -> bool:
-        return self.type.endswith(":managed")
 
 
 class CronSchedule(BaseModel):
     """
     Cron schedule
-
-    NOTE: If the timezone is a DST-observing one, then the schedule will adjust
-    itself appropriately. Cron's rules for DST are based on schedule times, not
-    intervals. This means that an hourly cron schedule will fire on every new
-    schedule hour, not every elapsed hour; for example, when clocks are set back
-    this will result in a two-hour pause as the schedule will fire *the first
-    time* 1am is reached and *the first time* 2am is reached, 120 minutes later.
-    Longer schedules, such as one that fires at 9am every morning, will
-    automatically adjust for DST.
-
-    Args:
-        cron (str): a valid cron string
-        timezone (str): a valid timezone string in IANA tzdata format (for example,
-            America/New_York).
-        day_or (bool, optional): Control how croniter handles `day` and `day_of_week`
-            entries. Defaults to True, matching cron which connects those values using
-            OR. If the switch is set to False, the values are connected using AND. This
-            behaves like fcron and enables you to e.g. define a job that executes each
-            2nd friday of a month by setting the days of month and the weekday.
-
     """
 
     cron: str = Field(default=..., examples=["0 0 * * *"])
     timezone: Optional[str] = Field(default=None, examples=["America/New_York"])
-    day_or: bool = Field(
-        default=True,
-        description=(
-            "Control croniter behavior for handling day and day_of_week entries."
-        ),
-    )
 
     @field_validator("cron")
     @classmethod
