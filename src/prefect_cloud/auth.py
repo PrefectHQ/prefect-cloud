@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import threading
 import webbrowser
@@ -16,9 +17,22 @@ from pydantic import BaseModel, TypeAdapter
 
 from prefect_cloud.utilities.tui import prompt_select_from_list
 
-# TODO: Get this configuration from the user's environment if possible
-CLOUD_UI_URL = "https://app.prefect.cloud"
-CLOUD_API_URL = "https://api.prefect.cloud/api"
+if os.environ.get("CLOUD_ENV") in ("prd", "prod", None):
+    CLOUD_UI_URL = "https://app.prefect.cloud"
+    CLOUD_API_URL = "https://api.prefect.cloud/api"
+elif os.environ.get("CLOUD_ENV") == "stg":
+    CLOUD_UI_URL = "https://app.stg.prefect.dev"
+    CLOUD_API_URL = "https://api.stg.prefect.dev/api"
+elif os.environ.get("CLOUD_ENV") == "dev":
+    CLOUD_UI_URL = "https://app.prefect.dev"
+    CLOUD_API_URL = "https://api.prefect.dev/api"
+elif os.environ.get("CLOUD_ENV") == "lcl":
+    CLOUD_UI_URL = "http://localhost:3000"
+    CLOUD_API_URL = "http://localhost:8000/api"
+else:
+    raise ValueError(f"Invalid CLOUD_ENV: {os.environ.get('CLOUD_ENV')}")
+
+
 PREFECT_HOME = Path.home() / ".prefect"
 
 
@@ -93,17 +107,26 @@ def cloud_client(api_key: str) -> Generator[httpx.Client, None, None]:
 
 def get_cloud_urls_or_login() -> tuple[str, str, str]:
     """Gets the cloud UI URL, API URL, and API key"""
-    profile = get_cloud_profile()
-    if not profile:
+    ui_url, api_url, api_key = get_cloud_urls_without_login()
+    if not ui_url or not api_url or not api_key:
         login()
 
+    ui_url, api_url, api_key = get_cloud_urls_without_login()
+    if not ui_url or not api_url or not api_key:
+        raise ValueError("No cloud profile found")
+
+    return ui_url, api_url, api_key
+
+
+def get_cloud_urls_without_login() -> tuple[str | None, str | None, str | None]:
+    """Gets the cloud UI URL, API URL, and API key"""
     profile = get_cloud_profile()
     if not profile:
-        raise ValueError("No cloud profile found")
+        return None, None, None
 
     api_url: str | None = profile.get("PREFECT_API_URL")
     if not api_url:
-        raise ValueError("No API URL found")
+        return None, None, None
 
     ui_url = (
         api_url.replace("https://api.", "https://app.")
@@ -114,7 +137,7 @@ def get_cloud_urls_or_login() -> tuple[str, str, str]:
 
     api_key = profile.get("PREFECT_API_KEY")
     if not api_key:
-        raise ValueError("No API key found")
+        return None, None, None
 
     return ui_url, api_url, api_key
 
