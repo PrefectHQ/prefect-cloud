@@ -1,19 +1,19 @@
-from uuid import UUID
+import asyncio
+import functools
 import inspect
+import traceback
+from typing import Any, Callable, List, Optional
+from uuid import UUID
+
 import typer
 import tzlocal
-import traceback
-
-from prefect_cloud.schemas.objects import DeploymentSchedule
-from prefect_cloud.schemas.objects import (
-    IntervalSchedule,
-    RRuleSchedule,
-)
-from prefect_cloud.schemas.objects import CronSchedule
+from click import ClickException
+from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
-from click import ClickException
+from rich.theme import Theme
+
 from prefect_cloud import auth, completions, deployments
 from prefect_cloud.client import get_prefect_cloud_client
 from prefect_cloud.dependencies import get_dependencies
@@ -23,19 +23,15 @@ from prefect_cloud.github import (
     get_github_raw_content,
     to_pull_step,
 )
+from prefect_cloud.schemas.objects import (
+    CronSchedule,
+    DeploymentSchedule,
+    IntervalSchedule,
+    RRuleSchedule,
+)
+from prefect_cloud.utilities.exception import MissingProfileError
 from prefect_cloud.utilities.flows import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
-from prefect_cloud.utilities.exception import MissingProfileError
-
-
-import asyncio
-import functools
-
-from typing import Any, Callable, List, Optional
-
-
-from rich.console import Console
-from rich.theme import Theme
 
 
 class PrefectCloudTyper(typer.Typer):
@@ -301,7 +297,7 @@ async def run(
         autocompletion=completions.complete_deployment,
     ),
 ):
-    ui_url, _, _ = auth.get_cloud_urls_or_login()
+    ui_url, _, _ = await auth.get_cloud_urls_or_login()
     flow_run = await deployments.run(deployment)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
     app.console.print(

@@ -37,6 +37,7 @@ dev = [
     "ruff>=0.9.4",
     "types-toml>=0.10.8.20240310",
     "types-tzlocal>=5.1.0.1",
+    "pytest-env>=1.1.5",
 ]
 
 [project.scripts]
@@ -51,4 +52,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 testpaths = [
     "tests",
+]
+env = [
+    "CLOUD_ENV=prd"
 ]

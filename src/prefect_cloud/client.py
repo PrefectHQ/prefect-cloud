@@ -1,34 +1,33 @@
 from __future__ import annotations
-from typing import Any, Literal, Union, Optional, Dict
-from typing_extensions import TypeAlias
-from datetime import datetime, timezone
-import httpx
 
+from datetime import datetime, timezone
+from logging import getLogger
+from typing import Any, Dict, Literal, Optional, Union
 from uuid import UUID
+
+import httpx
+from httpx import HTTPStatusError, RequestError
+from typing_extensions import TypeAlias
+
+from prefect_cloud import auth
 from prefect_cloud.schemas.actions import (
     BlockDocumentCreate,
 )
-
-
-from httpx import HTTPStatusError, RequestError
-from prefect_cloud.utilities.exception import ObjectNotFound, ObjectAlreadyExists
-from logging import getLogger
-from prefect_cloud.utilities.callables import ParameterSchema
-
-from prefect_cloud import auth
 from prefect_cloud.schemas.objects import (
+    BlockDocument,
+    BlockSchema,
+    BlockType,
+    CronSchedule,
+    DeploymentFlowRun,
+    DeploymentSchedule,
     Flow,
     WorkPool,
-    BlockDocument,
-    DeploymentFlowRun,
-    BlockType,
-    BlockSchema,
-    DeploymentSchedule,
-    CronSchedule,
 )
 from prefect_cloud.schemas.responses import DeploymentResponse
-from prefect_cloud.utilities.generics import validate_list
 from prefect_cloud.settings import settings
+from prefect_cloud.utilities.callables import ParameterSchema
+from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
+from prefect_cloud.utilities.generics import validate_list
 
 PREFECT_MANAGED = "prefect:managed"
 HTTP_METHODS: TypeAlias = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
@@ -831,3 +830,11 @@ async def get_prefect_cloud_client() -> PrefectCloudClient:
         api_url=api_url,
         api_key=api_key,
     )
+
+
+class SyncPrefectCloudClient(httpx.Client):
+    def __init__(self, api_url: str, api_key: str):
+        httpx_settings: dict[str, Any] = {}
+        httpx_settings.setdefault("headers", {"Authorization": f"Bearer {api_key}"})
+        httpx_settings.setdefault("base_url", api_url)
+        super().__init__(**httpx_settings)
