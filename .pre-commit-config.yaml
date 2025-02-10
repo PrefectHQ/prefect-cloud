@@ -27,7 +27,8 @@ repos:
           - types-toml==0.10.8.20240310
           - types-tzlocal==5.1.0.1
         files:
-                  ^(src/prefect_cloud/github.py|
+                  ^(
+                    src/prefect_cloud/github.py|
                     src/prefect_cloud/cli.py|
                     src/prefect_cloud/setting.py|
                     src/prefect_cloud/clients/.*|

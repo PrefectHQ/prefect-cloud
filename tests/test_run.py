@@ -52,6 +52,7 @@ def mock_deployment() -> DeploymentResponse:
 @pytest.fixture
 def mock_flow_run() -> DeploymentFlowRun:
     return DeploymentFlowRun(
+        name="test-flow-run",
         id=uuid4(),
         deployment_id=uuid4(),
     )
