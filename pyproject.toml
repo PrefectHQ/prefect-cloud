@@ -37,6 +37,7 @@ dev = [
     "ruff>=0.9.4",
     "types-toml>=0.10.8.20240310",
     "types-tzlocal>=5.1.0.1",
+    "types-croniter>=5.0.1.20241205",
     "pytest-env>=1.1.5",
 ]
 

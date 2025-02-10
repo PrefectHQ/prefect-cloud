@@ -147,7 +147,7 @@ class PrefectCloudTyper(typer.Typer):
 app = PrefectCloudTyper()
 
 
-def exit_with_error(message: str, progress: Progress = None):
+def exit_with_error(message: str | Exception, progress: Progress = None):
     if progress:
         progress.stop()
     app.console.print(message, style="red")

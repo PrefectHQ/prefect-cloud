@@ -344,6 +344,7 @@ dev = [
     { name = "pytest-xdist" },
     { name = "respx" },
     { name = "ruff" },
+    { name = "types-croniter" },
     { name = "types-toml" },
     { name = "types-tzlocal" },
 ]
@@ -377,6 +378,7 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6.1" },
     { name = "respx", specifier = ">=0.22.0" },
     { name = "ruff", specifier = ">=0.9.4" },
+    { name = "types-croniter", specifier = ">=5.0.1.20241205" },
     { name = "types-toml", specifier = ">=0.10.8.20240310" },
     { name = "types-tzlocal", specifier = ">=5.1.0.1" },
 ]
@@ -731,6 +733,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cb/ce/dca7b219718afd37a0068f4f2530a727c2b74a8b6e8e0c0080a4c0de4fcd/typer-0.15.1.tar.gz", hash = "sha256:a0588c0a7fa68a1978a069818657778f86abe6ff5ea6abf472f940a08bfe4f0a", size = 99789 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/cc/0a838ba5ca64dc832aa43f727bd586309846b0ffb2ce52422543e6075e8a/typer-0.15.1-py3-none-any.whl", hash = "sha256:7994fb7b8155b64d3402518560648446072864beefd44aa2dc36972a5972e847", size = 44908 },
+]
+
+[[package]]
+name = "types-croniter"
+version = "5.0.1.20241205"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/77/2f/f3298f148a7983df2a878d53c4a17ef1dd8654a155e11caa8decb7d79670/types_croniter-5.0.1.20241205.tar.gz", hash = "sha256:8a7cb10aa0b487c654a10c14d4e99098c92a5d68ee55c7a92a3df095831a6933", size = 10928 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/ec/ff0222b912fdff040a1908ea226f64ff5a1a384a4062a8714eb8b80ea5d9/types_croniter-5.0.1.20241205-py3-none-any.whl", hash = "sha256:e36e992d6a4600ddf510991a20d3273b888ecea5d77a19078348e00775ba54d3", size = 9375 },
 ]
 
 [[package]]

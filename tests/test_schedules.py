@@ -30,7 +30,7 @@ def api_url(account: UUID, workspace: UUID) -> str:
 
 
 @pytest.fixture(autouse=True)
-def mock_get_cloud_urls_or_login(
+async def mock_get_cloud_urls_or_login(
     monkeypatch: pytest.MonkeyPatch, account: UUID, workspace: UUID, api_url: str
 ):
     async def mock_urls():

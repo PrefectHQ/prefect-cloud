@@ -25,12 +25,5 @@ repos:
           - types-cachetools==5.3.0.5
           - types-pyyaml==6.0.12.9
           - types-toml==0.10.8.20240310
-          - types-tzlocal==5.1.0.1
-        files:
-                  ^(
-                    src/prefect_cloud/github.py|
-                    src/prefect_cloud/cli.py|
-                    src/prefect_cloud/setting.py|
-                    src/prefect_cloud/clients/.*|
-                  )$
-          
+          - types-tzlocal>=5.1.0.1
+          - types-croniter>=5.0.1.20241205
