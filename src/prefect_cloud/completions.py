@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 
-from prefect_cloud.auth import cloud_client, get_cloud_urls_without_login
+from prefect_cloud.auth import get_cloud_urls_without_login, sync_cloud_client
 
 COMPLETION_CACHE = Path.home() / ".prefect" / "prefect-cloud-completions.json"
 CACHE_TTL = 86400
@@ -31,8 +31,8 @@ async def complete_deployment(incomplete: str) -> list[str]:
             deployment_names = []
 
     if deployment_names is None:
-        async with cloud_client(api_key) as client:
-            response = await client.post(f"{api_url}/deployments/filter")
+        with sync_cloud_client(api_key) as client:
+            response = client.post(f"{api_url}/deployments/filter")
             response.raise_for_status()
             deployments = response.json()
 

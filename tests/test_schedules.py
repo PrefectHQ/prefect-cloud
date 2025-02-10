@@ -3,15 +3,15 @@ from uuid import UUID, uuid4
 import pytest
 import respx
 from httpx import Response
-from prefect_cloud.schemas.objects import (
-    DeploymentSchedule,
-    Flow,
-    DeploymentFlowRun,
-    CronSchedule,
-)
-from prefect_cloud.schemas.responses import DeploymentResponse
 
 from prefect_cloud import deployments
+from prefect_cloud.schemas.objects import (
+    CronSchedule,
+    DeploymentFlowRun,
+    DeploymentSchedule,
+    Flow,
+)
+from prefect_cloud.schemas.responses import DeploymentResponse
 
 
 @pytest.fixture

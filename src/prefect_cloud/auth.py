@@ -13,7 +13,8 @@ from uuid import UUID
 
 import toml
 from pydantic import BaseModel, TypeAdapter
-from prefect_cloud.client import PrefectCloudClient
+
+from prefect_cloud.client import PrefectCloudClient, SyncPrefectCloudClient
 from prefect_cloud.utilities.tui import prompt_select_from_list
 
 if os.environ.get("CLOUD_ENV") in ("prd", "prod", None):
@@ -100,6 +101,13 @@ async def cloud_client(api_key: str) -> AsyncGenerator[PrefectCloudClient, None]
     """Creates a client for the Prefect Cloud API"""
 
     async with PrefectCloudClient(api_url=CLOUD_API_URL, api_key=api_key) as client:
+        yield client
+
+
+@contextmanager
+def sync_cloud_client(api_key: str) -> Generator[SyncPrefectCloudClient, None, None]:
+    """Creates a client for the Prefect Cloud API"""
+    with SyncPrefectCloudClient(api_url=CLOUD_API_URL, api_key=api_key) as client:
         yield client
 
 
