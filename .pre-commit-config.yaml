@@ -27,7 +27,3 @@ repos:
           - types-toml==0.10.8.20240310
           - types-tzlocal>=5.1.0.1
           - types-croniter>=5.0.1.20241205
-        files: |
-          (?x)^(
-            src/prefect_cloud/.*
-          )$
