@@ -10,6 +10,7 @@ jobs:
     environment: prd
     runs-on: ubuntu-latest
     permissions:
+      contents: read 
       id-token: write # For PyPI's trusted publishing
     steps:
       - name: Checkout
