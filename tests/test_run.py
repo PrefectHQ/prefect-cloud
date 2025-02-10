@@ -3,11 +3,11 @@ from uuid import UUID, uuid4
 import pytest
 import respx
 from httpx import Response
+
+from prefect_cloud import deployments
 from prefect_cloud.schemas.objects import DeploymentFlowRun
 from prefect_cloud.schemas.responses import DeploymentResponse
 from prefect_cloud.utilities.exception import ObjectNotFound
-
-from prefect_cloud import deployments
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def api_url(account: UUID, workspace: UUID) -> str:
 def mock_get_cloud_urls_or_login(
     monkeypatch: pytest.MonkeyPatch, account: UUID, workspace: UUID, api_url: str
 ):
-    def mock_urls():
+    async def mock_urls():
         return (
             f"https://app.prefect.cloud/account/{account}/workspace/{workspace}",
             api_url,
