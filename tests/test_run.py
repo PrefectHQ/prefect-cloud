@@ -1,12 +1,11 @@
 from uuid import UUID, uuid4
 
-import prefect.main  # noqa: F401
 import pytest
 import respx
 from httpx import Response
-from prefect.client.schemas.objects import FlowRun
-from prefect.client.schemas.responses import DeploymentResponse
-from prefect.exceptions import ObjectNotFound
+from prefect_cloud.schemas.objects import DeploymentFlowRun
+from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.utilities.exception import ObjectNotFound
 
 from prefect_cloud import deployments
 
@@ -47,30 +46,22 @@ def mock_deployment() -> DeploymentResponse:
         flow_id=uuid4(),
         name="test-deployment",
         schedules=[],
-        is_schedule_active=True,
-        created=None,
-        updated=None,
     )
 
 
 @pytest.fixture
-def mock_flow_run() -> FlowRun:
-    return FlowRun(
+def mock_flow_run() -> DeploymentFlowRun:
+    return DeploymentFlowRun(
+        name="test-flow-run",
         id=uuid4(),
         deployment_id=uuid4(),
-        flow_id=uuid4(),
-        name="test-run",
-        state_type="SCHEDULED",
-        expected_start_time=None,
-        created=None,
-        updated=None,
     )
 
 
 async def test_run_deployment_by_id(
     cloud_api: respx.Router,
     mock_deployment: DeploymentResponse,
-    mock_flow_run: FlowRun,
+    mock_flow_run: DeploymentFlowRun,
     api_url: str,
 ):
     """run() should create a flow run when given a deployment ID"""
@@ -95,7 +86,7 @@ async def test_run_deployment_by_id(
 async def test_run_deployment_by_name(
     cloud_api: respx.Router,
     mock_deployment: DeploymentResponse,
-    mock_flow_run: FlowRun,
+    mock_flow_run: DeploymentFlowRun,
     api_url: str,
 ):
     """run() should create a flow run when given a deployment name"""

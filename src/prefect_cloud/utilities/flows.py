@@ -1,7 +1,7 @@
 import ast
 from typing import Any
 
-from prefect.utilities.callables import (
+from prefect_cloud.utilities.callables import (
     ParameterSchema,
     _generate_signature_from_source,
     _get_docstring_from_source,

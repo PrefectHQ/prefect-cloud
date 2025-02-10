@@ -84,66 +84,68 @@ def test_workspace_api_url(sample_workspace: Workspace):
     assert sample_workspace.api_url == expected
 
 
-def test_cloud_client_sets_auth_header(sample_api_key: str):
+async def test_cloud_client_sets_auth_header(sample_api_key: str):
     """Verifies that cloud client sets the correct authorization header and base URL."""
-    with cloud_client(sample_api_key) as client:
+    async with cloud_client(sample_api_key) as client:
         assert client.headers["Authorization"] == f"Bearer {sample_api_key}"
         assert client.base_url == httpx.URL("https://api.prefect.cloud/api/")
 
 
-def test_key_is_valid_with_valid_key(cloud_api: Router, sample_api_key: str):
+async def test_key_is_valid_with_valid_key(cloud_api: Router, sample_api_key: str):
     """API key validation should return True for valid keys."""
     cloud_api.get("https://api.prefect.cloud/api/me/").mock(
         return_value=httpx.Response(200)
     )
-    assert key_is_valid(sample_api_key) is True
+    assert await key_is_valid(sample_api_key) is True
 
 
-def test_key_is_valid_with_invalid_key(cloud_api: Router, sample_api_key: str):
+async def test_key_is_valid_with_invalid_key(cloud_api: Router, sample_api_key: str):
     """API key validation should return False for invalid keys."""
     cloud_api.get("https://api.prefect.cloud/api/me/").mock(
         return_value=httpx.Response(401)
     )
-    assert key_is_valid(sample_api_key) is False
+    assert await key_is_valid(sample_api_key) is False
 
 
-def test_me_returns_user_info(cloud_api: Router, sample_api_key: str, sample_me: Me):
+async def test_me_returns_user_info(
+    cloud_api: Router, sample_api_key: str, sample_me: Me
+):
     """me() should return the authenticated user's information."""
     cloud_api.get("https://api.prefect.cloud/api/me/").mock(
         return_value=httpx.Response(200, json=sample_me.model_dump(mode="json"))
     )
-    result = me(sample_api_key)
+    result = await me(sample_api_key)
     assert result == sample_me
 
 
-def test_me_handles_http_error(cloud_api: Router, sample_api_key: str):
+async def test_me_handles_http_error(cloud_api: Router, sample_api_key: str):
     """me() should handle HTTP errors gracefully."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(500))
 
     with pytest.raises(HTTPStatusError):
-        me(sample_api_key)
+        await me(sample_api_key)
 
 
-def test_get_accounts_returns_accounts(
+async def test_get_accounts_returns_accounts(
     cloud_api: Router, sample_api_key: str, sample_account: Account
 ):
     """get_accounts() should return the list of accounts for the authenticated user."""
     cloud_api.get("https://api.prefect.cloud/api/me/accounts").mock(
         return_value=httpx.Response(200, json=[sample_account.model_dump(mode="json")])
     )
-    result = get_accounts(sample_api_key)
+    result = await get_accounts(sample_api_key)
     assert result == [sample_account]
 
 
-def test_get_accounts_handles_http_error(cloud_api: Router, sample_api_key: str):
+async def test_get_accounts_handles_http_error(cloud_api: Router, sample_api_key: str):
     """get_accounts() should handle HTTP errors gracefully."""
     cloud_api.get("/me/accounts").mock(return_value=httpx.Response(500))
 
     with pytest.raises(HTTPStatusError):
-        get_accounts(sample_api_key)
+        await get_accounts(sample_api_key)
 
 
-def test_get_workspaces_returns_sorted_workspaces(
+async def test_get_workspaces_returns_sorted_workspaces(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """get_workspaces() should return workspaces sorted by handle."""
@@ -165,16 +167,18 @@ def test_get_workspaces_returns_sorted_workspaces(
             ],
         )
     )
-    result = get_workspaces(sample_api_key)
+    result = await get_workspaces(sample_api_key)
     assert result == [workspace2, sample_workspace]
 
 
-def test_get_workspaces_handles_http_error(cloud_api: Router, sample_api_key: str):
+async def test_get_workspaces_handles_http_error(
+    cloud_api: Router, sample_api_key: str
+):
     """get_workspaces() should handle HTTP errors gracefully."""
     cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(500))
 
     with pytest.raises(HTTPStatusError):
-        get_workspaces(sample_api_key)
+        await get_workspaces(sample_api_key)
 
 
 @pytest.mark.parametrize(
@@ -186,7 +190,7 @@ def test_get_workspaces_handles_http_error(cloud_api: Router, sample_api_key: st
         ("nonexistent", False),  # Not found
     ],
 )
-def test_lookup_workspace(
+async def test_lookup_workspace(
     cloud_api: Router,
     sample_api_key: str,
     sample_workspace: Workspace,
@@ -200,7 +204,7 @@ def test_lookup_workspace(
         )
     )
 
-    result = lookup_workspace(sample_api_key, identifier)
+    result = await lookup_workspace(sample_api_key, identifier)
 
     if expected_found:
         assert result == sample_workspace
@@ -208,7 +212,7 @@ def test_lookup_workspace(
         assert result is None
 
 
-def test_prompt_for_workspace_single_workspace(
+async def test_prompt_for_workspace_single_workspace(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """prompt_for_workspace() should return the workspace directly if there's only one."""
@@ -218,11 +222,11 @@ def test_prompt_for_workspace_single_workspace(
         )
     )
 
-    result = prompt_for_workspace(sample_api_key)
+    result = await prompt_for_workspace(sample_api_key)
     assert result == sample_workspace
 
 
-def test_prompt_for_workspace_multiple_workspaces(
+async def test_prompt_for_workspace_multiple_workspaces(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """prompt_for_workspace() should prompt user when multiple workspaces exist."""
@@ -247,12 +251,12 @@ def test_prompt_for_workspace_multiple_workspaces(
 
     with patch("prefect_cloud.auth.prompt_select_from_list") as mock_prompt:
         mock_prompt.return_value = sample_workspace.full_handle
-        result = prompt_for_workspace(sample_api_key)
+        result = await prompt_for_workspace(sample_api_key)
         assert result == sample_workspace
         mock_prompt.assert_called_once()
 
 
-def test_login_with_no_api_key_and_no_existing_profile(
+async def test_login_with_no_api_key_and_no_existing_profile(
     cloud_api: Router, mock_profiles_path: Path, sample_workspace: Workspace
 ):
     """login() should attempt interactive login when no API key is provided."""
@@ -265,21 +269,26 @@ def test_login_with_no_api_key_and_no_existing_profile(
 
     with patch("prefect_cloud.auth.login_interactively") as mock_login:
         mock_login.return_value = test_api_key
-        login()
+        await login()
         mock_login.assert_called_once()
 
 
-def test_login_with_invalid_api_key(cloud_api: Router):
+async def test_login_with_invalid_api_key(cloud_api: Router):
     """login() should handle invalid API keys gracefully."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(401))
 
+    # cloud_api.get("/me/workspaces").mock(
+    #     return_value=httpx.Response(
+    #     401, json=[]
+    #     )
+    # )
     with patch("prefect_cloud.auth.login_interactively") as mock_login:
         mock_login.return_value = None
-        login("invalid_key")
+        await login("invalid_key")
         assert mock_login.called
 
 
-def test_login_with_invalid_api_key_but_successful_interactive_login(
+async def test_login_with_invalid_api_key_but_successful_interactive_login(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """login() should fall back to interactive login when the provided key is invalid."""
@@ -292,11 +301,11 @@ def test_login_with_invalid_api_key_but_successful_interactive_login(
 
     with patch("prefect_cloud.auth.login_interactively") as mock_login:
         mock_login.return_value = sample_api_key
-        login("invalid_key")
+        await login("invalid_key")
         assert mock_login.called
 
 
-def test_login_with_workspace_id(
+async def test_login_with_workspace_id(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """login() should accept a workspace ID and set the profile correctly."""
@@ -309,7 +318,7 @@ def test_login_with_workspace_id(
 
     assert get_cloud_profile() is None
 
-    login(sample_api_key, str(sample_workspace.workspace_id))
+    await login(sample_api_key, str(sample_workspace.workspace_id))
 
     profile = get_cloud_profile()
     assert profile is not None
@@ -317,24 +326,24 @@ def test_login_with_workspace_id(
     assert profile["PREFECT_API_URL"] == sample_workspace.api_url
 
 
-def test_login_with_workspace_not_found(cloud_api: Router, sample_api_key: str):
+async def test_login_with_workspace_not_found(cloud_api: Router, sample_api_key: str):
     """login() should handle the case when specified workspace is not found."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(200, json={}))
     cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
-    result = login(sample_api_key, "nonexistent")
+    result = await login(sample_api_key, "nonexistent")
     assert result is None
 
 
-def test_login_with_no_workspaces(cloud_api: Router, sample_api_key: str):
+async def test_login_with_no_workspaces(cloud_api: Router, sample_api_key: str):
     """login() should handle the case when no workspaces are available."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(200))
     cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
 
-    result = login(sample_api_key)
+    result = await login(sample_api_key)
     assert result is None
 
 
-def test_login_with_valid_key_but_workspace_selection_cancelled(
+async def test_login_with_valid_key_but_workspace_selection_cancelled(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
     """login() should handle cancelled workspace selection."""
@@ -350,7 +359,7 @@ def test_login_with_valid_key_but_workspace_selection_cancelled(
 
     with patch("prefect_cloud.auth.prompt_for_workspace") as mock_prompt:
         mock_prompt.return_value = None
-        result = login(sample_api_key)
+        result = await login(sample_api_key)
         assert result is None
 
 
@@ -367,7 +376,7 @@ def test_logout_removes_profile(
     assert not mock_profiles_path.exists()
 
 
-def test_get_cloud_urls_or_login_with_valid_profile(mock_profiles_path: Path):
+async def test_get_cloud_urls_or_login_with_valid_profile(mock_profiles_path: Path):
     """get_cloud_urls_or_login() should return correct URLs and API key when profile exists."""
     profile = {
         "profiles": {
@@ -380,14 +389,14 @@ def test_get_cloud_urls_or_login_with_valid_profile(mock_profiles_path: Path):
     mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
     mock_profiles_path.write_text(toml.dumps(profile))
 
-    ui_url, api_url, api_key = get_cloud_urls_or_login()
+    ui_url, api_url, api_key = await get_cloud_urls_or_login()
 
     assert ui_url == "https://app.prefect.cloud/account/123/workspace/456"
     assert api_url == "https://api.prefect.cloud/api/accounts/123/workspaces/456"
     assert api_key == "test_key"
 
 
-def test_get_cloud_urls_or_login_with_no_profile_successful_login(
+async def test_get_cloud_urls_or_login_with_no_profile_successful_login(
     mock_profiles_path: Path, sample_api_key: str, sample_workspace: Workspace
 ):
     """get_cloud_urls_or_login() should attempt login when no profile exists."""
@@ -396,7 +405,7 @@ def test_get_cloud_urls_or_login_with_no_profile_successful_login(
             sample_api_key, sample_workspace
         )
 
-        ui_url, api_url, api_key = get_cloud_urls_or_login()
+        ui_url, api_url, api_key = await get_cloud_urls_or_login()
 
         mock_login.assert_called_once()
         assert (
@@ -407,13 +416,15 @@ def test_get_cloud_urls_or_login_with_no_profile_successful_login(
         assert api_key == sample_api_key
 
 
-def test_get_cloud_urls_or_login_with_no_profile_failed_login(mock_profiles_path: Path):
+async def test_get_cloud_urls_or_login_with_no_profile_failed_login(
+    mock_profiles_path: Path,
+):
     """get_cloud_urls_or_login() should raise error when login fails."""
     with patch("prefect_cloud.auth.login") as mock_login:
         mock_login.return_value = None
 
         with pytest.raises(ValueError, match="No cloud profile found"):
-            get_cloud_urls_or_login()
+            await get_cloud_urls_or_login()
 
         mock_login.assert_called_once()
 
@@ -483,7 +494,7 @@ def test_get_cloud_urls_without_login_with_profile_missing_api_key(
         ),
     ],
 )
-def test_get_cloud_urls_or_login_url_transformations(
+async def test_get_cloud_urls_or_login_url_transformations(
     mock_profiles_path: Path, api_url: str, expected_ui_url: str
 ):
     """get_cloud_urls_or_login() should correctly transform API URLs to UI URLs."""
@@ -498,5 +509,5 @@ def test_get_cloud_urls_or_login_url_transformations(
     mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
     mock_profiles_path.write_text(toml.dumps(profile))
 
-    ui_url, _, _ = get_cloud_urls_or_login()
+    ui_url, _, _ = await get_cloud_urls_or_login()
     assert ui_url == expected_ui_url
