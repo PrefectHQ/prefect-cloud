@@ -1,7 +1,7 @@
 [project]
 name = "prefect-cloud"
-version = "0.1.0"
-description = "Package for deploying on Prefect Cloud"
+version = "0.1.0a0"
+description = "Package for easily deploying to Prefect Cloud."
 readme = "README.md"
 authors = [
     { name = "Prefect Technologies, Inc.", email = "help@prefect.io"}
