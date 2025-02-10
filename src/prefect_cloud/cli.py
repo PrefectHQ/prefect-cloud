@@ -151,7 +151,7 @@ class PrefectCloudTyper(typer.Typer):
 app = PrefectCloudTyper()
 
 
-def exit_with_error(message: str, progress: Progress = None):
+def exit_with_error(message: str | Exception, progress: Progress = None):
     if progress:
         progress.stop()
     app.console.print(message, style="red")
@@ -301,7 +301,7 @@ async def run(
         autocompletion=completions.complete_deployment,
     ),
 ):
-    ui_url, _, _ = auth.get_cloud_urls_or_login()
+    ui_url, _, _ = await auth.get_cloud_urls_or_login()
     flow_run = await deployments.run(deployment)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
     app.console.print(

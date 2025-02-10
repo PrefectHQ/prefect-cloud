@@ -26,10 +26,10 @@ def api_url(account: UUID, workspace: UUID) -> str:
 
 
 @pytest.fixture(autouse=True)
-def mock_get_cloud_urls_or_login(
+async def mock_get_cloud_urls_or_login(
     monkeypatch: pytest.MonkeyPatch, account: UUID, workspace: UUID, api_url: str
 ):
-    def mock_urls():
+    async def mock_urls():
         return (
             f"https://app.prefect.cloud/account/{account}/workspace/{workspace}",
             api_url,

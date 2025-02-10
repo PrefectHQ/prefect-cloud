@@ -26,7 +26,7 @@ from pydantic.json_schema import GenerateJsonSchema, JsonSchemaValue
 from pydantic_core import core_schema
 import pydantic
 from griffe import Docstring, DocstringSectionKind, Parser, parse
-from typing_extensions import Literal, TypeVar
+from typing_extensions import Literal
 from logging import getLogger
 from contextlib import contextmanager
 
@@ -37,8 +37,6 @@ from prefect_cloud.utilities.pendulum import (
 )
 
 logger: Logger = getLogger(__name__)
-
-R = TypeVar("R", infer_variance=True)
 
 
 @contextmanager
@@ -330,7 +328,7 @@ def _generate_signature_from_source(
     if func_def is None:
         raise ValueError(f"Function {func_name} not found in source code")
     parameters: list[inspect.Parameter] = []
-
+    annotation: Any = None
     # Handle annotations for positional only args e.g. def func(a, /, b, c)
     for arg in func_def.args.posonlyargs:
         name = arg.arg
@@ -374,9 +372,12 @@ def _generate_signature_from_source(
         parameters.append(param)
 
     # Handle default values for args e.g. def func(a=1, b="hello", c=3.14)
-    defaults = [None] * (
-        len(func_def.args.args) - len(func_def.args.defaults)
-    ) + func_def.args.defaults
+    num_defaults = len(func_def.args.defaults)
+    num_args = len(func_def.args.args)
+    defaults: list[Any] = [None] * (num_args - num_defaults) + list(
+        func_def.args.defaults
+    )
+
     for param, default in zip(parameters, defaults):
         if default is not None:
             try:
@@ -409,10 +410,13 @@ def _generate_signature_from_source(
         parameters.append(param)
 
     # Handle default values for keyword only args e.g. def func(*, a=1, b="hello")
-    defaults = [None] * (
-        len(func_def.args.kwonlyargs) - len(func_def.args.kw_defaults)
-    ) + func_def.args.kw_defaults
-    for param, default in zip(parameters[-len(func_def.args.kwonlyargs) :], defaults):
+    num_kw_defaults = len(func_def.args.kw_defaults)
+    num_kwonlyargs = len(func_def.args.kwonlyargs)
+    kw_defaults: list[Any] = [None] * (num_kwonlyargs - num_kw_defaults) + list(
+        func_def.args.kw_defaults
+    )
+
+    for param, default in zip(parameters[-num_kwonlyargs:], kw_defaults):
         if default is not None:
             try:
                 def_code = compile(ast.Expression(default), "<string>", "eval")
@@ -437,7 +441,7 @@ def _generate_signature_from_source(
         )
 
     # Handle return annotation e.g. def func() -> int
-    return_annotation = func_def.returns
+    return_annotation: Any = func_def.returns
     if return_annotation is not None:
         try:
             ret_ann_code = compile(

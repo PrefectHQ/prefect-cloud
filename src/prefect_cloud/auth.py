@@ -104,7 +104,7 @@ async def cloud_client(api_key: str) -> AsyncGenerator[PrefectCloudClient, None]
 
 
 async def get_prefect_cloud_client() -> PrefectCloudClient:
-    _, api_url, api_key = get_cloud_urls_or_login()
+    _, api_url, api_key = await get_cloud_urls_or_login()
     return PrefectCloudClient(
         api_url=api_url,
         api_key=api_key,
