@@ -1,6 +1,6 @@
 [project]
 name = "prefect-cloud"
-version = "0.1.0a0"
+version = "0.1.0-alpha.1"
 description = "Package for easily deploying to Prefect Cloud."
 readme = "README.md"
 authors = [
