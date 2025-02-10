@@ -29,6 +29,7 @@ def validate_block_document_name(value: Optional[str]) -> Optional[str]:
 
 
 class DeploymentFlowRun(BaseModel):
+    name: str = Field(default=..., examples=["my-flow-run"])
     id: UUID = Field(default_factory=uuid4)
     deployment_id: Optional[UUID] = Field(
         default=None,

@@ -38,7 +38,7 @@ from rich.console import Console
 from rich.theme import Theme
 
 
-class PrefectTyper(typer.Typer):
+class PrefectCloudTyper(typer.Typer):
     """
     Wraps commands created by `Typer` to support async functions and handle errors.
     """
@@ -59,7 +59,7 @@ class PrefectTyper(typer.Typer):
 
     def add_typer(
         self,
-        typer_instance: "PrefectTyper",
+        typer_instance: "PrefectCloudTyper",
         *args: Any,
         no_args_is_help: bool = True,
         aliases: Optional[list[str]] = None,
@@ -120,7 +120,7 @@ class PrefectTyper(typer.Typer):
 
             wrapped_fn = with_cli_exception_handling(wrapped_fn)
             # register fn with its original name
-            command_decorator = super(PrefectTyper, self).command(
+            command_decorator = super(PrefectCloudTyper, self).command(
                 name=name, *args, **kwargs
             )
             original_command = command_decorator(wrapped_fn)
@@ -128,7 +128,7 @@ class PrefectTyper(typer.Typer):
             # register fn for each alias, e.g. @marvin_app.command(aliases=["r"])
             if aliases:
                 for alias in aliases:
-                    super(PrefectTyper, self).command(
+                    super(PrefectCloudTyper, self).command(
                         name=alias,
                         *args,
                         **{k: v for k, v in kwargs.items() if k != "aliases"},
@@ -148,7 +148,7 @@ class PrefectTyper(typer.Typer):
         )
 
 
-app = PrefectTyper()
+app = PrefectCloudTyper()
 
 
 def exit_with_error(message: str, progress: Progress = None):

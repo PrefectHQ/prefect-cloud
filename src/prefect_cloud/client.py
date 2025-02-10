@@ -62,7 +62,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         body: dict[str, Any] = {
             "limit": None,
             "offset": 0,
-            "work_pools": {"any_": [PREFECT_MANAGED]},
+            "work_pools": {"type": {"any_": [PREFECT_MANAGED]}},
         }
         response = await self.request("POST", "/work_pools/filter", json=body)
         return validate_list(WorkPool, response.json())
@@ -70,31 +70,6 @@ class PrefectCloudClient(httpx.AsyncClient):
     async def read_work_pool_by_name(self, name: str) -> "WorkPool":
         response = await self.request("GET", f"/work_pools/{name}")
         return WorkPool.model_validate(response.json())
-
-    async def update_work_pool_type_and_template(
-        self,
-        name: str,
-        type: str,
-        template: dict[str, Any],
-    ) -> None:
-        """
-        Updates a work pool.
-
-        Args:
-            work_pool_name: Name of the work pool to update.
-            work_pool: Fields to update in the work pool.
-        """
-        try:
-            await self.request(
-                "PATCH",
-                f"/work_pools/{name}",
-                json={"type": type, "base_job_template": template},
-            )
-        except HTTPStatusError as e:
-            if e.response.status_code == 404:
-                raise ObjectNotFound(http_exc=e) from e
-            else:
-                raise
 
     async def create_work_pool_managed_by_name(
         self,
@@ -259,21 +234,6 @@ class PrefectCloudClient(httpx.AsyncClient):
                 "PATCH",
                 f"/block_documents/{block_document_id}",
                 json={"data": {"value": value}},
-            )
-        except HTTPStatusError as e:
-            if e.response.status_code == 404:
-                raise ObjectNotFound(http_exc=e) from e
-            else:
-                raise
-
-    async def delete_block_document(self, block_document_id: "UUID") -> None:
-        """
-        Delete a block document.
-        """
-        try:
-            await self.request(
-                "DELETE",
-                f"/block_documents/{block_document_id}",
             )
         except HTTPStatusError as e:
             if e.response.status_code == 404:

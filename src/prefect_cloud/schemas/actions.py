@@ -11,9 +11,6 @@ from prefect_cloud.types import (
 from prefect_cloud.schemas.objects import CronSchedule
 
 
-PREFECT_DEPLOYMENT_SCHEDULE_MAX_SCHEDULED_RUNS = 50
-
-
 class DeploymentScheduleCreate(BaseModel):
     schedule: CronSchedule = Field(
         default=..., description="The schedule for the deployment."
