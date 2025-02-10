@@ -10,7 +10,7 @@ jobs:
     environment: prd
     runs-on: ubuntu-latest
     permissions:
-      contents: read 
+      contents: read # allow access to the repo
       id-token: write # For PyPI's trusted publishing
     steps:
       - name: Checkout
