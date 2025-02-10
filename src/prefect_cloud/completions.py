@@ -13,7 +13,7 @@ def clear_cache():
         COMPLETION_CACHE.unlink()
 
 
-async def complete_deployment(incomplete: str) -> list[str]:
+def complete_deployment(incomplete: str) -> list[str]:
     _, api_url, api_key = get_cloud_urls_without_login()
     if not api_url or not api_key:
         return []
@@ -36,7 +36,7 @@ async def complete_deployment(incomplete: str) -> list[str]:
             response.raise_for_status()
             deployments = response.json()
 
-            response = await client.post(f"{api_url}/flows/filter")
+            response = client.post(f"{api_url}/flows/filter")
             response.raise_for_status()
             flows = response.json()
 
