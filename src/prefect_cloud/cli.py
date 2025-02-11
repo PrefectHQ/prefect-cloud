@@ -267,6 +267,13 @@ async def deploy(
 
             _, api_url, _ = await auth.get_cloud_urls_or_login()
 
+            # TODO temporary: remove this when the PR is merged
+            pip_packages = [
+                "git+https://github.com//PrefectHQ/prefect.git@add-missing-convert-statement"
+            ]
+            if dependencies:
+                pip_packages += get_dependencies(dependencies)
+
             deployment_id = await client.create_managed_deployment(
                 deployment_name,
                 github_ref.filepath,
@@ -275,7 +282,7 @@ async def deploy(
                 pull_steps,
                 parameter_schema,
                 job_variables={
-                    "pip_packages": get_dependencies(dependencies or []),
+                    "pip_packages": pip_packages,
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
                 },
             )
