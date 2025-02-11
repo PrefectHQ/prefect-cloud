@@ -215,20 +215,43 @@ async def deploy(
         "-c",
         help="Optional credentials if code is in a private repository. ",
     ),
+    run: bool = typer.Option(
+        False,
+        "--run",
+        "-r",
+        help="Run immediately after deploying.",
+    ),
+    parameters: list[str] = typer.Option(
+        ...,
+        "--parameters",
+        "-p",
+        help="Parameters to set in the format NAME=VALUE. Can be specified multiple times. Only used with --run.",
+        default_factory=list,
+    ),
 ):
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[blue]{task.description}"),
-        transient=True,
-    ) as progress:
-        try:
-            env_vars = process_key_value_pairs(env) if env else {}
-        except ValueError as e:
-            exit_with_error(str(e), progress=progress)
+    async with await get_prefect_cloud_client() as client:
+        ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
 
-        async with await get_prefect_cloud_client() as client:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[blue]{task.description}"),
+            transient=True,
+        ) as progress:
             task = progress.add_task("Inspecting code...", total=None)
 
+            # Process env vars
+            try:
+                env_vars = process_key_value_pairs(env) if env else {}
+            except ValueError as e:
+                exit_with_error(str(e), progress=progress)
+
+            # Process parameters
+            try:
+                func_kwargs = process_key_value_pairs(parameters) if parameters else {}
+            except ValueError as e:
+                exit_with_error(str(e), progress=progress)
+
+            # Get code contents
             github_ref = GitHubFileRef.from_url(file)
             try:
                 raw_contents = await get_github_raw_content(github_ref, credentials)
@@ -238,6 +261,7 @@ async def deploy(
                     "If it's private repo retry with `--credentials`.",
                     progress=progress,
                 )
+
             try:
                 parameter_schema = get_parameter_schema_from_content(
                     raw_contents, function
@@ -248,11 +272,10 @@ async def deploy(
                     progress=progress,
                 )
 
-            progress.update(task, description="Confirming work pool exists...")
+            progress.update(task, description="Provisioning infrastructure...")
             work_pool = await client.ensure_managed_work_pool()
 
-            progress.update(task, description="Deploying flow...")
-            deployment_name = f"{function}_deployment"
+            deployment_name = f"{function}"
 
             credentials_name = None
             if credentials:
@@ -260,12 +283,7 @@ async def deploy(
                 credentials_name = f"{github_ref.owner}-{github_ref.repo}-credentials"
                 await client.create_credentials_secret(credentials_name, credentials)
 
-            pull_steps = [
-                to_pull_step(github_ref, credentials_name)
-                # TODO: put back flowify if this a public repo? need to figure that out.
-            ]
-
-            _, api_url, _ = await auth.get_cloud_urls_or_login()
+            pull_steps = [to_pull_step(github_ref, credentials_name)]
 
             # TODO temporary: remove this when the PR is merged
             pip_packages = [
@@ -273,6 +291,8 @@ async def deploy(
             ]
             if dependencies:
                 pip_packages += get_dependencies(dependencies)
+
+            progress.update(task, description="Deploying code...")
 
             deployment_id = await client.create_managed_deployment(
                 deployment_name,
@@ -286,14 +306,29 @@ async def deploy(
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
                 },
             )
-    deployment_url = f"{api_url}/deployments/{deployment_id}"
-    app.console.print(
-        f"View deployment here: \n ➜ [link={deployment_url}]{deployment_name}[/link]",
-    )
 
-    app.console.print(
-        f"Run it with: \n $ prefect-cloud run {function}/{deployment_name}",
-    )
+            progress.update(task, completed=True, description="Code deployed!")
+
+        deployment_url = f"{api_url}/deployments/{deployment_id}"
+        app.console.print(
+            f"[blue]View deployment here: "
+            f"\n ➜[/blue] [bold][link={deployment_url}]{deployment_name}[/link][/bold]",
+        )
+
+        if run:
+            flow_run = await client.create_flow_run_from_deployment_id(
+                deployment_id, func_kwargs
+            )
+            flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
+            app.console.print(
+                f"[blue]View flow run here: "
+                f"\n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
+            )
+        else:
+            app.console.print(
+                f"[blue]Run it with: "
+                f"\n $[/blue] prefect-cloud run {function}/{deployment_name}",
+            )
 
 
 @app.command()
@@ -308,9 +343,8 @@ async def run(
     flow_run = await deployments.run(deployment)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
     app.console.print(
-        f"Flow run [bold]{flow_run.name}[/bold] [dim]({flow_run.id})[/dim] created",
-        f"and will begin running soon.\n"
-        f"[link={flow_run_url}]View its progress on Prefect Cloud[/link].",
+        f"[blue]View flow run here: "
+        f"\n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
     )
 
 
