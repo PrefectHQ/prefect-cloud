@@ -84,7 +84,7 @@ async def deploy(
     async with await auth.get_prefect_cloud_client() as client:
         with Progress(
             SpinnerColumn(),
-            TextColumn("[blue]{task.description}"),
+            TextColumn("[cyan]{task.description}"),
             transient=True,
         ) as progress:
             task = progress.add_task("Inspecting code...", total=None)
@@ -160,9 +160,10 @@ async def deploy(
             progress.update(task, completed=True, description="Code deployed!")
 
         deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
+
         app.console.print(
-            f"[blue]View deployment here: "
-            f"\n ➜[/blue] [bold][link={deployment_url}]{deployment_name}[/link][/bold]",
+            f"[bold]Deployed [cyan]{deployment_name}[/cyan]! 🎉[/bold]",
+            f"\n└─► {deployment_url}",
         )
 
         if run:
@@ -171,13 +172,13 @@ async def deploy(
             )
             flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
             app.console.print(
-                f"[blue]View flow run here: "
-                f"\n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
+                f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]"
+                f"\n└─► {flow_run_url}"
             )
         else:
             app.console.print(
-                f"[blue]Run it with: "
-                f"\n $[/blue] prefect-cloud run {function}/{deployment_name}",
+                "[bold]Run it with:[/bold]"
+                f"\n└─► [green]prefect-cloud run {function}/{deployment_name}[/green]"
             )
 
 
@@ -192,9 +193,10 @@ async def run(
     ui_url, _, _ = await auth.get_cloud_urls_or_login()
     flow_run = await deployments.run(deployment)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
+
     app.console.print(
-        f"[blue]View flow run here: "
-        f"\n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
+        f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]"
+        f"\n└─► {flow_run_url}"
     )
 
 

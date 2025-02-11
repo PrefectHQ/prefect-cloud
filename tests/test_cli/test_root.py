@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import readchar
 from rich.console import Console
-from typer.testing import CliRunner, Result
+from click.testing import Result
+from typer.testing import CliRunner
 
 from prefect_cloud.cli.root import app
 from prefect_cloud.github import FileNotFound
@@ -223,9 +224,10 @@ def test_deploy_command_basic():
                     ],
                     expected_code=0,
                     expected_output_contains=[
-                        "View deployment here",
-                        "Run it with: ",
-                        "prefect-cloud run test_function/test_function",
+                        "Deployed test_function! 🎉",
+                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
+                        "Run it with:",
+                        "└─► prefect-cloud run test_function/test_function",
                     ],
                 )
 
@@ -247,8 +249,14 @@ def test_deploy_and_run():
         # Mock necessary responses
         client.ensure_managed_work_pool = AsyncMock(return_value="test-pool")
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
+
+        # Create a proper mock for the flow run
+        flow_run_mock = MagicMock()
+        flow_run_mock.id = "test-run-id"
+        flow_run_mock.name = "test-run"  # Set as a string instead of a MagicMock
+
         client.create_flow_run_from_deployment_id = AsyncMock(
-            return_value=MagicMock(id="test-run-id", name="test-run")
+            return_value=flow_run_mock
         )
 
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
@@ -274,8 +282,10 @@ def test_deploy_and_run():
                     ],
                     expected_code=0,
                     expected_output_contains=[
-                        "View deployment here",
-                        "View flow run here",
+                        "Deployed test_function! 🎉",
+                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
+                        "Started flow run test-run! 🚀",
+                        "└─► https://ui.url/runs/flow-run/test-run-id",
                     ],
                 )
 
@@ -343,7 +353,10 @@ def test_deploy_with_env_vars():
                         "DEBUG=true",
                     ],
                     expected_code=0,
-                    expected_output_contains="View deployment here",
+                    expected_output_contains=[
+                        "Deployed test_function! 🎉",
+                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
+                    ],
                 )
 
                 # Verify environment variables were passed correctly
@@ -386,7 +399,10 @@ def test_deploy_with_private_repo_credentials():
                         "github_token",
                     ],
                     expected_code=0,
-                    expected_output_contains="View deployment here",
+                    expected_output_contains=[
+                        "Deployed test_function! 🎉",
+                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
+                    ],
                 )
 
                 # Verify credentials were stored
@@ -448,3 +464,35 @@ def test_deploy_function_not_found():
                     expected_code=1,
                     expected_output_contains="Could not find function 'test_function'",
                 )
+
+
+def test_run():
+    """Test running a deployment"""
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+        client = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = client
+
+        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
+            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
+
+            with patch("prefect_cloud.cli.root.deployments.run") as mock_run:
+                # Create a proper mock for the flow run
+                flow_run_mock = MagicMock()
+                flow_run_mock.id = "test-run-id"
+                flow_run_mock.name = (
+                    "test-run"  # Set as a string instead of a MagicMock
+                )
+
+                mock_run.return_value = flow_run_mock
+
+                invoke_and_assert(
+                    command=["run", "test_deployment"],
+                    expected_code=0,
+                    expected_output_contains=[
+                        "Started flow run test-run! 🚀",
+                        "└─► https://ui.url/runs/flow-run/test-run-id",
+                    ],
+                )
+
+                # Verify the deployment was run
+                mock_run.assert_called_once_with("test_deployment")
