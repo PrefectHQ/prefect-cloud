@@ -42,7 +42,7 @@ dev = [
 ]
 
 [project.scripts]
-prefect-cloud = "prefect_cloud:cli.app"
+prefect-cloud = "prefect_cloud.cli.root:app"
 
 [build-system]
 requires = ["hatchling"]

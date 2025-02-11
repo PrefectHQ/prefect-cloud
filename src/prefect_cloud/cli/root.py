@@ -6,7 +6,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
 
-from prefect_cloud import auth, completions, deployments
+from prefect_cloud import auth, deployments
+from prefect_cloud.cli import completions
 from prefect_cloud.cli.utilities import (
     PrefectCloudTyper,
     exit_with_error,
@@ -107,8 +108,8 @@ async def deploy(
                 raw_contents = await get_github_raw_content(github_ref, credentials)
             except FileNotFound:
                 exit_with_error(
-                    "Can't access that file in Github. It either doesn't exist or is private. "
-                    "If it's private repo retry with `--credentials`.",
+                    "Unable to access file in Github. "
+                    "If it's in a private repository retry with `--credentials`.",
                     progress=progress,
                 )
 
