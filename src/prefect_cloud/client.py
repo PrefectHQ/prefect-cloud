@@ -9,7 +9,7 @@ import httpx
 from httpx import HTTPStatusError, RequestError
 from typing_extensions import TypeAlias
 
-from prefect_cloud import auth
+
 from prefect_cloud.schemas.actions import (
     BlockDocumentCreate,
 )
@@ -832,14 +832,6 @@ class PrefectCloudClient(httpx.AsyncClient):
         except Exception:
             pass
         return None
-
-
-async def get_prefect_cloud_client() -> PrefectCloudClient:
-    _, api_url, api_key = await auth.get_cloud_urls_or_login()
-    return PrefectCloudClient(
-        api_url=api_url,
-        api_key=api_key,
-    )
 
 
 class SyncPrefectCloudClient(httpx.Client):

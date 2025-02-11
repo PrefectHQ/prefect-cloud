@@ -15,7 +15,6 @@ from rich.text import Text
 from rich.theme import Theme
 
 from prefect_cloud import auth, completions, deployments
-from prefect_cloud.client import get_prefect_cloud_client
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import (
     FileNotFound,
@@ -226,7 +225,7 @@ async def deploy(
         except ValueError as e:
             exit_with_error(str(e), progress=progress)
 
-        async with await get_prefect_cloud_client() as client:
+        async with await auth.get_prefect_cloud_client() as client:
             task = progress.add_task("Inspecting code...", total=None)
 
             github_ref = GitHubFileRef.from_url(file)
