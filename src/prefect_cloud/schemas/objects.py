@@ -37,6 +37,10 @@ class DeploymentFlowRun(BaseModel):
             "The id of the deployment associated with this flow run, if available."
         ),
     )
+    expected_start_time: Optional[datetime.datetime] = Field(
+        default=None,
+        description="The expected start time of the flow run.",
+    )
 
 
 class BlockType(BaseModel):

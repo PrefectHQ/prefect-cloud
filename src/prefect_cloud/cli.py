@@ -221,6 +221,13 @@ async def deploy(
         "-r",
         help="Run immediately after deploying.",
     ),
+    parameters: list[str] = typer.Option(
+        ...,
+        "--parameters",
+        "-p",
+        help="Parameters to set in the format NAME=VALUE. Can be specified multiple times. Only used with --run.",
+        default_factory=list,
+    ),
 ):
     async with await get_prefect_cloud_client() as client:
         ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
@@ -235,6 +242,12 @@ async def deploy(
             # Process env vars
             try:
                 env_vars = process_key_value_pairs(env) if env else {}
+            except ValueError as e:
+                exit_with_error(str(e), progress=progress)
+
+            # Process parameters
+            try:
+                func_kwargs = process_key_value_pairs(parameters) if parameters else {}
             except ValueError as e:
                 exit_with_error(str(e), progress=progress)
 
@@ -298,18 +311,23 @@ async def deploy(
 
         deployment_url = f"{api_url}/deployments/{deployment_id}"
         app.console.print(
-            f"[blue]View deployment here: \n ➜[/blue] [bold][link={deployment_url}]{deployment_name}[/link][/bold]",
+            f"[blue]View deployment here: "
+            f"\n ➜[/blue] [bold][link={deployment_url}]{deployment_name}[/link][/bold]",
         )
 
         if run:
-            flow_run = await client.create_flow_run_from_deployment_id(deployment_id)
+            flow_run = await client.create_flow_run_from_deployment_id(
+                deployment_id, func_kwargs
+            )
             flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
             app.console.print(
-                f"[blue]View flow run here: \n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
+                f"[blue]View flow run here: "
+                f"\n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
             )
         else:
             app.console.print(
-                f"[blue]Run it with: \n $[/blue] prefect-cloud run {function}/{deployment_name}",
+                f"[blue]Run it with: "
+                f"\n $[/blue] prefect-cloud run {function}/{deployment_name}",
             )
 
 
@@ -325,9 +343,8 @@ async def run(
     flow_run = await deployments.run(deployment)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
     app.console.print(
-        f"Flow run [bold]{flow_run.name}[/bold] [dim]({flow_run.id})[/dim] created",
-        f"and will begin running soon.\n"
-        f"[link={flow_run_url}]View its progress on Prefect Cloud[/link].",
+        f"[blue]View flow run here: "
+        f"\n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
     )
 
 

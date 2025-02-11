@@ -655,6 +655,7 @@ class PrefectCloudClient(httpx.AsyncClient):
     async def create_flow_run_from_deployment_id(
         self,
         deployment_id: "UUID",
+        parameters: dict[str, Any] | None = None,
     ) -> "DeploymentFlowRun":
         """
         Create a flow run for a deployment.
@@ -673,7 +674,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         response = await self.request(
             "POST",
             f"/deployments/{deployment_id}/create_flow_run",
-            json={},
+            json={"parameters": parameters or {}},
         )
         return DeploymentFlowRun.model_validate(response.json())
 
@@ -807,13 +808,8 @@ class PrefectCloudClient(httpx.AsyncClient):
     async def get_default_base_job_template_for_managed_work_pool(
         self,
     ) -> Optional[Dict[str, Any]]:
-        response = await self.request(
-            "GET", "collections/views/aggregate-worker-metadata"
-        )
         try:
-            response = await self.request(
-                "GET", "collections/views/aggregate-worker-metadata"
-            )
+            response = await self.request("GET", "collections/work_pool_types")
             worker_metadata = response.json()
             for collection in worker_metadata.values():
                 for worker in collection.values():
