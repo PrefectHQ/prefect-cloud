@@ -15,7 +15,6 @@ from rich.text import Text
 from rich.theme import Theme
 
 from prefect_cloud import auth, completions, deployments
-from prefect_cloud.client import get_prefect_cloud_client
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import (
     FileNotFound,
@@ -229,9 +228,9 @@ async def deploy(
         default_factory=list,
     ),
 ):
-    async with await get_prefect_cloud_client() as client:
-        ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
+    ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
 
+    async with await auth.get_prefect_cloud_client() as client:
         with Progress(
             SpinnerColumn(),
             TextColumn("[blue]{task.description}"),
