@@ -34,12 +34,16 @@ def hello_world():
     print("Hello, World!")
 ```
 
-Deploy it using:
+Deploy and run it using:
 ```bash
-prefect-cloud deploy hello_world --from https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py
+prefect-cloud deploy hello_world --from https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py --run
 ```
 
 ### Options
+**Only Deploy**
+```bash
+prefect-cloud deploy ...
+```
 
 **Deploy and Run**
 ```bash
