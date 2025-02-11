@@ -309,7 +309,7 @@ async def deploy(
 
             progress.update(task, completed=True, description="Code deployed!")
 
-        deployment_url = f"{api_url}/deployments/{deployment_id}"
+        deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
         app.console.print(
             f"[blue]View deployment here: "
             f"\n ➜[/blue] [bold][link={deployment_url}]{deployment_name}[/link][/bold]",
