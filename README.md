@@ -36,7 +36,7 @@ def hello_world():
 
 Deploy it using:
 ```bash
-prefect-cloud deploy ... --from https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py
+prefect-cloud deploy hello_world --from https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py
 ```
 
 ### Options
@@ -45,11 +45,9 @@ prefect-cloud deploy ... --from https://github.com/PrefectHQ/prefect-cloud/blob/
 ```bash
 prefect-cloud deploy ... --run --parameters name=value
 ```
-Parameters must match the function's arguments. For example, if your function is `def hello(name: str)`, use `--parameters name=Alice`.
 
 **Dependencies**
 
-Specify dependencies using `--with`:
 ```bash
 # Package names
 prefect-cloud deploy ... --with pandas --with numpy
