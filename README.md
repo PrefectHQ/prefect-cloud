@@ -23,7 +23,7 @@ For example:
 uvx prefect-cloud deploy hello_world --from https://github.com/jakekaplan/demo-flows/blob/main/hello_world.py
 ```
 ### From a Private Repo
-```shell
+```console
 # private repo
 uvx prefect-cloud deploy FUNCTION_NAME --from GITHUB_PY_FILE_URL --credentials GITHUB_TOKEN
 ```
