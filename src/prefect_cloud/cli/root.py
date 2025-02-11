@@ -28,6 +28,7 @@ from prefect_cloud.schemas.objects import (
 )
 from prefect_cloud.utilities.flows import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
+from prefect_cloud.utilities.blocks import safe_block_name
 
 
 app = PrefectCloudTyper()
@@ -130,7 +131,9 @@ async def deploy(
             credentials_name = None
             if credentials:
                 progress.update(task, description="Syncing credentials...")
-                credentials_name = f"{github_ref.owner}-{github_ref.repo}-credentials"
+                credentials_name = safe_block_name(
+                    f"{github_ref.owner}-{github_ref.repo}-credentials"
+                )
                 await client.create_credentials_secret(credentials_name, credentials)
 
             pull_steps = [to_pull_step(github_ref, credentials_name)]
