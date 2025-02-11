@@ -9,7 +9,7 @@ import httpx
 from httpx import HTTPStatusError, RequestError
 from typing_extensions import TypeAlias
 
-from prefect_cloud import auth
+
 from prefect_cloud.schemas.actions import (
     BlockDocumentCreate,
 )
@@ -96,6 +96,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                     "base_job_template": template,
                 },
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 409:
                 raise ObjectAlreadyExists(http_exc=e) from e
@@ -211,6 +212,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                 "/block_documents/",
                 json=block_document_data,
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 409:
                 raise ObjectAlreadyExists(http_exc=e) from e
@@ -269,6 +271,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                 f"/block_documents/{block_document_id}",
                 params=dict(include_secrets=include_secrets),
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise ObjectNotFound(http_exc=e) from e
@@ -348,6 +351,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                 f"/block_types/slug/{block_type_slug}/block_documents/name/{name}",
                 params=dict(include_secrets=include_secrets),
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise ObjectNotFound(http_exc=e) from e
@@ -366,6 +370,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                 "GET",
                 f"/block_types/slug/{slug}",
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise ObjectNotFound(http_exc=e) from e
@@ -400,6 +405,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                     "limit": 1,
                 },
             )
+            response.raise_for_status()
         except HTTPStatusError:
             raise
         from prefect_cloud.schemas.objects import BlockSchema
@@ -468,6 +474,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                 "GET",
                 f"/deployments/name/{flow_name}/{deployment_name}",
             )
+            response.raise_for_status()
         except (HTTPStatusError, ValueError) as e:
             if isinstance(e, HTTPStatusError) and e.response.status_code == 404:
                 raise ObjectNotFound(http_exc=e) from e
@@ -593,6 +600,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                 "GET",
                 f"/deployments/{deployment_id}/schedules",
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise ObjectNotFound(http_exc=e) from e
@@ -615,11 +623,12 @@ class PrefectCloudClient(httpx.AsyncClient):
             active: whether or not the schedule should be active
         """
         try:
-            await self.request(
+            response = await self.request(
                 "PATCH",
                 f"/deployments/{deployment_id}/schedules/{schedule_id}",
                 json={"active": active},
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise ObjectNotFound(http_exc=e) from e
@@ -642,10 +651,11 @@ class PrefectCloudClient(httpx.AsyncClient):
             RequestError: if the schedules were not deleted for any reason
         """
         try:
-            await self.request(
+            response = await self.request(
                 "DELETE",
                 f"/deployments/{deployment_id}/schedules/{schedule_id}",
             )
+            response.raise_for_status()
         except HTTPStatusError as e:
             if e.response.status_code == 404:
                 raise ObjectNotFound(http_exc=e) from e
@@ -818,14 +828,6 @@ class PrefectCloudClient(httpx.AsyncClient):
         except Exception:
             pass
         return None
-
-
-async def get_prefect_cloud_client() -> PrefectCloudClient:
-    _, api_url, api_key = await auth.get_cloud_urls_or_login()
-    return PrefectCloudClient(
-        api_url=api_url,
-        api_key=api_key,
-    )
 
 
 class SyncPrefectCloudClient(httpx.Client):
