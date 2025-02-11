@@ -10,7 +10,7 @@ $ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## Login to Prefect Cloud
 ```bash
-$ uvx prefect cloud login
+$ uvx prefect-cloud login
 ```
 
 ## Deploy your workflow from github
