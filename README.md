@@ -9,17 +9,17 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ## Login to Prefect Cloud
-```shell
+```console
 uvx prefect-cloud login
 ```
 
 ## Deploy your workflow from github
 
-```shell
+```console
 uvx prefect-cloud deploy FUNCTION_NAME --from GITHUB_PY_FILE_URL
 ```
 For example:
-```shell
+```console
 uvx prefect-cloud deploy hello_world --from https://github.com/jakekaplan/demo-flows/blob/main/hello_world.py
 ```
 ### From a Private Repo
@@ -29,7 +29,7 @@ uvx prefect-cloud deploy FUNCTION_NAME --from GITHUB_PY_FILE_URL --credentials G
 ```
 
 ### With dependencies:
-```shell
+```console
 # a package
 uvx prefect-cloud deploy ... --from ... --dependencies pandas
 # multiple packages
@@ -41,6 +41,6 @@ uvx prefect-cloud deploy ... --from ... --dependencies /path/to/pyproject.toml
 ```
 
 ### With environment variables:
-```shell
+```console
 uvx prefect-cloud deploy ... --from ... --env ENV_VAR1=VALUE1 --env ENV_VAR2=VALUE2
 ```
