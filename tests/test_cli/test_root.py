@@ -192,7 +192,7 @@ def temporary_console_width(console: Console, width: int):
 
 def test_deploy_command_basic():
     """Test basic deployment without running"""
-    with patch("prefect_cloud.cli.root.get_prefect_cloud_client") as mock_client:
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
         # Setup mock client and responses
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
@@ -240,7 +240,7 @@ def test_deploy_command_basic():
 
 def test_deploy_and_run():
     """Test deployment with immediate run"""
-    with patch("prefect_cloud.cli.root.get_prefect_cloud_client") as mock_client:
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
@@ -287,7 +287,7 @@ def test_deploy_and_run():
 
 def test_deploy_private_repo_without_credentials():
     """Test deployment fails appropriately when accessing private repo without credentials"""
-    with patch("prefect_cloud.cli.root.get_prefect_cloud_client") as mock_client:
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
@@ -313,7 +313,7 @@ def test_deploy_private_repo_without_credentials():
 
 def test_deploy_with_env_vars():
     """Test deployment with environment variables"""
-    with patch("prefect_cloud.cli.root.get_prefect_cloud_client") as mock_client:
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
@@ -357,7 +357,7 @@ def test_deploy_with_env_vars():
 
 def test_deploy_with_private_repo_credentials():
     """Test deployment with credentials for private repository"""
-    with patch("prefect_cloud.cli.root.get_prefect_cloud_client") as mock_client:
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
@@ -397,7 +397,7 @@ def test_deploy_with_private_repo_credentials():
 
 def test_deploy_invalid_parameters():
     """Test deployment fails with invalid parameter format"""
-    with patch("prefect_cloud.cli.root.get_prefect_cloud_client") as mock_client:
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
@@ -423,7 +423,7 @@ def test_deploy_invalid_parameters():
 
 def test_deploy_function_not_found():
     """Test deployment fails when function doesn't exist in file"""
-    with patch("prefect_cloud.cli.root.get_prefect_cloud_client") as mock_client:
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
