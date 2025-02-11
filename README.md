@@ -4,8 +4,8 @@
 
 ## Installation
 All you need is `uv`! See [installation docs here](https://docs.astral.sh/uv/getting-started/installation/)
-```shell
-curl -LsSf https://astral.sh/uv/install.sh | sh
+```console
+$ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ## Login to Prefect Cloud
