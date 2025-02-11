@@ -21,22 +21,21 @@ class GitHubFileRef:
     ref_type: Literal["blob", "tree"]
 
     @classmethod
-    def from_url(cls, url: str, default_ref: str = "main") -> "GitHubFileRef":
+    def from_url(cls, url: str) -> "GitHubFileRef":
         """Parse a GitHub URL into its components.
 
         Handles various GitHub URL formats:
         - https://github.com/owner/repo/blob/branch/path/to/file.py
         - github.com/owner/repo/blob/a1b2c3d/path/to/file.py (commit SHA)
-        - github.com/owner/repo/blob/path/to/file.py (uses default_ref)
+        - github.com/owner/repo/blob/path/to/file.py (uses first path component as ref)
 
         Also handles tree URLs:
         - https://github.com/owner/repo/tree/branch/path/to/dir
         - github.com/owner/repo/tree/a1b2c3d/path/to/dir (commit SHA)
-        - github.com/owner/repo/tree/path/to/dir (uses default_ref)
+        - github.com/owner/repo/tree/path/to/dir (uses first path component as ref)
 
         Args:
             url: GitHub URL to parse
-            default_ref: Default branch/ref to use if not specified in URL. Defaults to "main".
 
         Returns:
             GitHubFileRef containing parsed components
@@ -54,10 +53,10 @@ class GitHubFileRef:
 
         # Remove leading/trailing slashes and split path
         parts = parsed.path.strip("/").split("/")
-        if len(parts) < 3:  # Need at least owner/repo/[blob|tree]
+        if len(parts) < 4:  # Need at least owner/repo/[blob|tree]/ref
             raise ValueError(
                 "Invalid GitHub URL. Expected format: "
-                "https://github.com/owner/repo/blob|tree/[branch-or-commit/]path/to/file.py"
+                "https://github.com/owner/repo/blob|tree/ref/path/to/file.py"
             )
 
         owner, repo = parts[:2]
@@ -68,13 +67,15 @@ class GitHubFileRef:
                 f"Invalid reference type '{ref_type}'. Must be 'blob' or 'tree'"
             )
 
-        # Handle case where ref is not specified
-        if len(parts) == 4:  # No ref specified, just filepath
-            ref = default_ref
-            filepath = parts[3]
-        else:
-            ref = parts[3]
-            filepath = "/".join(parts[4:])
+        # Always use the first component after blob/tree as the ref
+        ref = parts[3]
+        filepath = "/".join(parts[4:]) if len(parts) > 4 else ""
+
+        if not filepath:
+            raise ValueError(
+                "Invalid GitHub URL. Expected format: "
+                "https://github.com/owner/repo/blob|tree/ref/path/to/file.py"
+            )
 
         return cls(
             owner=owner, repo=repo, ref=ref, filepath=filepath, ref_type=ref_type

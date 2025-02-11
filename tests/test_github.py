@@ -136,31 +136,19 @@ class TestGitHubFileRef:
 
     def test_from_url_without_ref(self):
         url = "github.com/PrefectHQ/prefect/blob/README.md"
-        ref = GitHubFileRef.from_url(url)
-
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
-        assert ref.ref == "main"  # Uses default
-        assert ref.filepath == "README.md"
-        assert ref.ref_type == "blob"
-
-    def test_from_url_with_custom_default_ref(self):
-        url = "github.com/PrefectHQ/prefect/blob/README.md"
-        ref = GitHubFileRef.from_url(url, default_ref="develop")
-
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
-        assert ref.ref == "develop"  # Uses provided default
-        assert ref.filepath == "README.md"
-        assert ref.ref_type == "blob"
+        with pytest.raises(
+            ValueError,
+            match="Invalid GitHub URL. Expected format: https://github.com/owner/repo/blob|tree/ref/path/to/file.py",
+        ):
+            GitHubFileRef.from_url(url)
 
     def test_from_url_with_tree_without_ref(self):
-        url = "github.com/PrefectHQ/prefect/tree/src/prefect"
+        url = "github.com/PrefectHQ/prefect/tree/main/src/prefect"
         ref = GitHubFileRef.from_url(url)
 
         assert ref.owner == "PrefectHQ"
         assert ref.repo == "prefect"
-        assert ref.ref == "main"  # Uses default
+        assert ref.ref == "main"
         assert ref.filepath == "src/prefect"
         assert ref.ref_type == "tree"
 
