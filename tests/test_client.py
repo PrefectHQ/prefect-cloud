@@ -241,9 +241,9 @@ async def test_get_default_base_job_template_for_managed_work_pool(
         }
     }
 
-    respx_mock.get(
-        f"{PREFECT_API_URL}/collections/views/aggregate-worker-metadata"
-    ).mock(return_value=Response(200, json=mock_response))
+    respx_mock.get(f"{PREFECT_API_URL}/collections/work_pool_types").mock(
+        return_value=Response(200, json=mock_response)
+    )
 
     result = await client.get_default_base_job_template_for_managed_work_pool()
 
@@ -263,9 +263,9 @@ async def test_get_default_base_job_template_for_managed_work_pool_no_template(
         }
     }
 
-    respx_mock.get(
-        f"{PREFECT_API_URL}/collections/views/aggregate-worker-metadata"
-    ).mock(return_value=Response(200, json=mock_response))
+    respx_mock.get(f"{PREFECT_API_URL}/collections/work_pool_types").mock(
+        return_value=Response(200, json=mock_response)
+    )
 
     result = await client.get_default_base_job_template_for_managed_work_pool()
 
