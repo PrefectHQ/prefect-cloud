@@ -5,30 +5,29 @@ Utilities for working with Python callables.
 import ast
 import importlib.util
 import inspect
+import os
+import sys
+from contextlib import contextmanager
+from functools import partial
+from importlib.machinery import ModuleSpec
+from logging import Logger, getLogger
+from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pendulum
-import sys
-from importlib.machinery import ModuleSpec
-import os
-from functools import partial
-from types import ModuleType
-from logging import Logger
-from pathlib import Path
-from typing import Any, Callable, Optional, TYPE_CHECKING
+import pydantic
+from griffe import Docstring, DocstringSectionKind, Parser, parse
 from pydantic import (
     BaseModel,
     ConfigDict,
-    create_model,
-    TypeAdapter,
     PydanticUndefinedAnnotation,
+    TypeAdapter,
+    create_model,
 )
 from pydantic.json_schema import GenerateJsonSchema, JsonSchemaValue
 from pydantic_core import core_schema
-import pydantic
-from griffe import Docstring, DocstringSectionKind, Parser, parse
 from typing_extensions import Literal
-from logging import getLogger
-from contextlib import contextmanager
 
 from prefect_cloud.utilities.pendulum import (
     PydanticPendulumDateTimeType,
@@ -241,8 +240,8 @@ def parameter_schema_from_entrypoint(entrypoint: str) -> ParameterSchema:
         if not spec or not spec.origin:
             raise ValueError(f"Could not find module {path!r}")
         source_code = Path(spec.origin).read_text()
-    signature = _generate_signature_from_source(source_code, func_name, filepath)
-    docstring = _get_docstring_from_source(source_code, func_name)
+    signature = generate_signature_from_source(source_code, func_name, filepath)
+    docstring = get_docstring_from_source(source_code, func_name)
     return generate_parameter_schema(signature, parameter_docstrings(docstring))
 
 
@@ -253,7 +252,7 @@ def generate_parameter_schema(
     Generate a parameter schema from a function signature and docstrings.
 
     To get a signature from a function, use `inspect.signature(fn)` or
-    `_generate_signature_from_source(source_code, func_name)`.
+    `generate_signature_from_source(source_code, func_name)`.
 
     Args:
         signature: The function signature.
@@ -289,7 +288,7 @@ def generate_parameter_schema(
     return ParameterSchema(**schema)
 
 
-def _generate_signature_from_source(
+def generate_signature_from_source(
     source_code: str, func_name: str, filepath: Optional[str] = None
 ) -> inspect.Signature:
     """
@@ -455,7 +454,7 @@ def _generate_signature_from_source(
     return inspect.Signature(parameters, return_annotation=return_annotation)
 
 
-def _get_docstring_from_source(source_code: str, func_name: str) -> Optional[str]:
+def get_docstring_from_source(source_code: str, func_name: str) -> Optional[str]:
     """
     Extract the docstring of a function from its source code.
 

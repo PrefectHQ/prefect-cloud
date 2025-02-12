@@ -28,7 +28,7 @@ from prefect_cloud.schemas.objects import (
 )
 from prefect_cloud.utilities.flows import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
-
+from prefect_cloud.utilities.blocks import safe_block_name
 
 app = PrefectCloudTyper()
 
@@ -84,7 +84,7 @@ async def deploy(
     async with await auth.get_prefect_cloud_client() as client:
         with Progress(
             SpinnerColumn(),
-            TextColumn("[blue]{task.description}"),
+            TextColumn("[cyan]{task.description}"),
             transient=True,
         ) as progress:
             task = progress.add_task("Inspecting code...", total=None)
@@ -103,6 +103,7 @@ async def deploy(
 
             # Get code contents
             github_ref = GitHubFileRef.from_url(file)
+            raw_contents: str | None = None
             try:
                 raw_contents = await get_github_raw_content(github_ref, credentials)
             except FileNotFound:
@@ -130,7 +131,9 @@ async def deploy(
             credentials_name = None
             if credentials:
                 progress.update(task, description="Syncing credentials...")
-                credentials_name = f"{github_ref.owner}-{github_ref.repo}-credentials"
+                credentials_name = safe_block_name(
+                    f"{github_ref.owner}-{github_ref.repo}-credentials"
+                )
                 await client.create_credentials_secret(credentials_name, credentials)
 
             pull_steps = [to_pull_step(github_ref, credentials_name)]
@@ -160,9 +163,12 @@ async def deploy(
             progress.update(task, completed=True, description="Code deployed!")
 
         deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
+
         app.console.print(
-            f"[blue]View deployment here: "
-            f"\n ➜[/blue] [bold][link={deployment_url}]{deployment_name}[/link][/bold]",
+            f"[bold]Deployed [cyan]{deployment_name}[/cyan]! 🎉[/bold]",
+            "\n└─►",
+            Text(deployment_url, style="link", justify="left"),
+            soft_wrap=True,
         )
 
         if run:
@@ -171,13 +177,14 @@ async def deploy(
             )
             flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
             app.console.print(
-                f"[blue]View flow run here: "
-                f"\n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
+                f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─►",
+                Text(flow_run_url, style="link", justify="left"),
+                soft_wrap=True,
             )
         else:
             app.console.print(
-                f"[blue]Run it with: "
-                f"\n $[/blue] prefect-cloud run {function}/{deployment_name}",
+                "[bold]Run it with:[/bold]"
+                f"\n└─► [green]prefect-cloud run {function}/{deployment_name}[/green]"
             )
 
 
@@ -192,9 +199,11 @@ async def run(
     ui_url, _, _ = await auth.get_cloud_urls_or_login()
     flow_run = await deployments.run(deployment)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
+
     app.console.print(
-        f"[blue]View flow run here: "
-        f"\n ➜[/blue] [link={flow_run_url}]{flow_run.name}[/link] [dim]({flow_run.id})[/dim]"
+        f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─►",
+        Text(flow_run_url, style="link", justify="left"),
+        soft_wrap=True,
     )
 
 
@@ -216,10 +225,11 @@ async def ls():
             description = f"{schedule.schedule.cron} ({schedule.schedule.timezone})"
         elif isinstance(schedule.schedule, IntervalSchedule):
             description = f"Every {schedule.schedule.interval} seconds"
-        elif isinstance(schedule.schedule, RRuleSchedule):
+        elif isinstance(schedule.schedule, RRuleSchedule):  # type: ignore[reportUnnecessaryIsInstance]
             description = f"{schedule.schedule.rrule}"
         else:
-            return "TODO"
+            app.console.print(f"Unknown schedule type: {type(schedule.schedule)}")
+            description = "Unknown"
 
         return Text(f"{prefix} {description})", style=style)
 
@@ -229,7 +239,7 @@ async def ls():
         )
 
         next_run = context.next_runs_by_deployment_id.get(deployment.id)
-        if next_run:
+        if next_run and next_run.expected_start_time:
             next_run_time = next_run.expected_start_time.astimezone(
                 tzlocal.get_localzone()
             ).strftime("%Y-%m-%d %H:%M:%S %Z")

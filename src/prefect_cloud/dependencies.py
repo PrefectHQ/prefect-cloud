@@ -1,7 +1,8 @@
 import subprocess
-import tomllib
 from pathlib import Path
-from typing import Self
+from typing_extensions import Self
+
+import toml
 
 
 class InvalidDependencies(Exception):
@@ -29,7 +30,7 @@ class Dependencies:
     @classmethod
     def from_requirements_file(cls, filename: str) -> Self:
         path = Path(filename)
-        dependencies = []
+        dependencies: list[str] = []
         for line in path.read_text().splitlines():
             line = line.strip()
 
@@ -40,8 +41,7 @@ class Dependencies:
 
     @classmethod
     def from_pyproject_toml(cls, filename: str) -> Self:
-        with open(filename, "rb") as f:
-            pyproject_data = tomllib.load(f)
+        pyproject_data = toml.load(filename)
 
         dependencies = pyproject_data.get("project", {}).get("dependencies", [])
 
@@ -56,7 +56,7 @@ class Dependencies:
 
 
 def get_dependencies(all_dependencies: list[str]) -> list[str]:
-    extracted = []
+    extracted: list[str] = []
 
     for dependency in all_dependencies:
         path = Path(dependency)

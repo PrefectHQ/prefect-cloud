@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import asyncio
 import functools
 import inspect
 import traceback
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, NoReturn
 
 import typer
 from click import ClickException
@@ -13,7 +15,9 @@ from rich.theme import Theme
 from prefect_cloud.utilities.exception import MissingProfileError
 
 
-def exit_with_error(message: str | Exception, progress: Progress = None):
+def exit_with_error(
+    message: str | Exception, progress: Progress | None = None
+) -> NoReturn:
     from prefect_cloud.cli.root import app
 
     if progress:
@@ -39,7 +43,7 @@ def with_cli_exception_handling(fn: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def process_key_value_pairs(env: list[str]) -> dict[str, str]:
-    invalid_pairs = []
+    invalid_pairs: list[str] = []
 
     for e in env:
         if "=" not in e:
@@ -75,7 +79,7 @@ class PrefectCloudTyper(typer.Typer):
         typer_instance: "PrefectCloudTyper",
         *args: Any,
         no_args_is_help: bool = True,
-        aliases: Optional[list[str]] = None,
+        aliases: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -98,9 +102,9 @@ class PrefectCloudTyper(typer.Typer):
 
     def command(
         self,
-        name: Optional[str] = None,
+        name: str | None = None,
         *args: Any,
-        aliases: Optional[List[str]] = None,
+        aliases: list[str] | None = None,
         **kwargs: Any,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """

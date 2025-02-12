@@ -1,11 +1,10 @@
 from typing import Annotated, TypeVar
-
+from zoneinfo import available_timezones
 
 from pydantic import (
     BeforeValidator,
     Field,
 )
-from zoneinfo import available_timezones
 from pydantic_extra_types.pendulum_dt import Date as PydanticDate
 from pydantic_extra_types.pendulum_dt import DateTime as PydanticDateTime
 from typing_extensions import TypeAlias

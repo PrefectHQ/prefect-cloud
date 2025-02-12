@@ -119,7 +119,7 @@ async def get_github_raw_content(
     github_ref: GitHubFileRef, credentials: str | None = None
 ) -> str:
     """Get content of a file from GitHub API."""
-    headers = {
+    headers: dict[str, str] = {
         "Accept": "application/vnd.github.v3.raw",
     }
     if credentials:
