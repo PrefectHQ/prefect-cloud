@@ -100,14 +100,16 @@ async def test_schedule_adds_new_schedule(
     cloud_api.post(f"{api_url}/deployments/{mock_deployment.id}/schedules").mock(
         return_value=Response(
             201,
-            json=DeploymentSchedule(
-                id=uuid4(),
-                schedule=CronSchedule(
-                    cron="0 12 * * *",
-                    timezone="UTC",
-                ),
-                active=True,
-            ).model_dump(mode="json"),
+            json=[
+                DeploymentSchedule(
+                    id=uuid4(),
+                    schedule=CronSchedule(
+                        cron="0 12 * * *",
+                        timezone="UTC",
+                    ),
+                    active=True,
+                ).model_dump(mode="json")
+            ],
         )
     )
 
@@ -140,14 +142,16 @@ async def test_schedule_removes_prior_schedules(
     ).mock(
         return_value=Response(
             201,
-            json=DeploymentSchedule(
-                id=uuid4(),
-                schedule=CronSchedule(
-                    cron="0 12 * * *",
-                    timezone="UTC",
-                ),
-                active=True,
-            ).model_dump(mode="json"),
+            json=[
+                DeploymentSchedule(
+                    id=uuid4(),
+                    schedule=CronSchedule(
+                        cron="0 12 * * *",
+                        timezone="UTC",
+                    ),
+                    active=True,
+                ).model_dump(mode="json")
+            ],
         )
     )
 
@@ -168,14 +172,16 @@ async def test_schedule_accepts_deployment_name(
     cloud_api.post(f"{api_url}/deployments/{mock_deployment.id}/schedules").mock(
         return_value=Response(
             201,
-            json=DeploymentSchedule(
-                id=uuid4(),
-                schedule=CronSchedule(
-                    cron="0 12 * * *",
-                    timezone="UTC",
-                ),
-                active=True,
-            ).model_dump(mode="json"),
+            json=[
+                DeploymentSchedule(
+                    id=uuid4(),
+                    schedule=CronSchedule(
+                        cron="0 12 * * *",
+                        timezone="UTC",
+                    ),
+                    active=True,
+                ).model_dump(mode="json")
+            ],
         )
     )
 

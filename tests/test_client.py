@@ -182,7 +182,9 @@ async def test_create_deployment_schedule(
 
     respx_mock.post(
         f"{PREFECT_API_URL}/deployments/{mock_deployment.id}/schedules"
-    ).mock(return_value=Response(201, json=deployment_schedule.model_dump(mode="json")))
+    ).mock(
+        return_value=Response(201, json=[deployment_schedule.model_dump(mode="json")])
+    )
 
     result = await client.create_deployment_schedule(
         deployment_id=mock_deployment.id,
