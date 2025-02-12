@@ -16,7 +16,7 @@ class GitHubFileRef:
 
     owner: str
     repo: str
-    branch: str
+    ref: str  # Can be either a branch name or commit SHA
     filepath: str
     ref_type: Literal["blob", "tree"]
 
@@ -24,9 +24,15 @@ class GitHubFileRef:
     def from_url(cls, url: str) -> "GitHubFileRef":
         """Parse a GitHub URL into its components.
 
-        Handles both blob and tree URLs:
+        Handles various GitHub URL formats:
         - https://github.com/owner/repo/blob/branch/path/to/file.py
-        - https://github.com/owner/repo/tree/branch/path/to/file.py
+        - github.com/owner/repo/blob/a1b2c3d/path/to/file.py (commit SHA)
+        - github.com/owner/repo/blob/path/to/file.py (uses first path component as ref)
+
+        Also handles tree URLs:
+        - https://github.com/owner/repo/tree/branch/path/to/dir
+        - github.com/owner/repo/tree/a1b2c3d/path/to/dir (commit SHA)
+        - github.com/owner/repo/tree/path/to/dir (uses first path component as ref)
 
         Args:
             url: GitHub URL to parse
@@ -35,17 +41,22 @@ class GitHubFileRef:
             GitHubFileRef containing parsed components
 
         Raises:
-            ValueError: If URL is not a valid GitHub blob/tree URL
+            ValueError: If URL cannot be parsed into required components
         """
+        # Handle URLs without protocol but with github.com
+        if url.startswith("github.com"):
+            url = "https://" + url
+
         parsed = urlparse(url)
         if parsed.netloc != "github.com":
-            raise ValueError("Not a GitHub URL")
+            raise ValueError("Not a GitHub URL. Must include 'github.com' in the URL")
 
+        # Remove leading/trailing slashes and split path
         parts = parsed.path.strip("/").split("/")
-        if len(parts) < 5:  # owner/repo/[blob|tree]/branch/filepath
+        if len(parts) < 4:  # Need at least owner/repo/[blob|tree]/ref
             raise ValueError(
                 "Invalid GitHub URL. Expected format: "
-                "https://github.com/owner/repo/blob|tree/branch/path/to/file.py"
+                "https://github.com/owner/repo/blob|tree/ref/path/to/file.py"
             )
 
         owner, repo = parts[:2]
@@ -56,11 +67,18 @@ class GitHubFileRef:
                 f"Invalid reference type '{ref_type}'. Must be 'blob' or 'tree'"
             )
 
-        branch = parts[3]
-        filepath = "/".join(parts[4:])
+        # Always use the first component after blob/tree as the ref
+        ref = parts[3]
+        filepath = "/".join(parts[4:]) if len(parts) > 4 else ""
+
+        if not filepath:
+            raise ValueError(
+                "Invalid GitHub URL. Expected format: "
+                "https://github.com/owner/repo/blob|tree/ref/path/to/file.py"
+            )
 
         return cls(
-            owner=owner, repo=repo, branch=branch, filepath=filepath, ref_type=ref_type
+            owner=owner, repo=repo, ref=ref, filepath=filepath, ref_type=ref_type
         )
 
     @property
@@ -74,12 +92,12 @@ class GitHubFileRef:
         return str(Path(self.filepath).parent)
 
     @property
-    def raw_url(self) -> str:
-        """Get the raw.githubusercontent.com URL for this file."""
-        return f"https://raw.githubusercontent.com/{self.owner}/{self.repo}/refs/heads/{self.branch}/{self.filepath}"
+    def api_url(self) -> str:
+        """Get the GitHub API URL for this file."""
+        return f"https://api.github.com/repos/{self.owner}/{self.repo}/contents/{self.filepath}?ref={self.ref}"
 
     def __str__(self) -> str:
-        return f"github.com/{self.owner}/{self.repo} @ {self.branch} - {self.filepath}"
+        return f"github.com/{self.owner}/{self.repo} @ {self.ref} - {self.filepath}"
 
 
 def to_pull_step(
@@ -87,7 +105,7 @@ def to_pull_step(
 ) -> dict[str, Any]:
     pull_step_kwargs = {
         "repository": github_ref.clone_url,
-        "branch": github_ref.branch,
+        "branch": github_ref.ref,
     }
     if credentials_block:
         pull_step_kwargs["access_token"] = (
@@ -100,13 +118,15 @@ def to_pull_step(
 async def get_github_raw_content(
     github_ref: GitHubFileRef, credentials: str | None = None
 ) -> str:
-    """Get raw content of a file from GitHub."""
-    headers: dict[str, str] = {}
+    """Get content of a file from GitHub API."""
+    headers: dict[str, str] = {
+        "Accept": "application/vnd.github.v3.raw",
+    }
     if credentials:
         headers["Authorization"] = f"Bearer {credentials}"
 
     async with AsyncClient() as client:
-        response = await client.get(github_ref.raw_url, headers=headers)
+        response = await client.get(github_ref.api_url, headers=headers)
         if response.status_code == 404:
             raise FileNotFound(f"File not found: {github_ref}")
         response.raise_for_status()
