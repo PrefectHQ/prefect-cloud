@@ -40,7 +40,10 @@ async def deploy(
         ...,
         "--from",
         "-f",
-        help=".py file containing the function to deploy.",
+        help=(
+            "URL to a .py file containing the function to deploy. Supported formats: \n\n"
+            "-- Github: [https://]github.com/owner/repo/(blob|tree)/ref/path/to/file"
+        ),
     ),
     dependencies: list[str] = typer.Option(
         ...,
