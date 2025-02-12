@@ -166,7 +166,9 @@ async def deploy(
 
         app.console.print(
             f"[bold]Deployed [cyan]{deployment_name}[/cyan]! 🎉[/bold]",
-            f"\n└─► {deployment_url}",
+            "\n└─►",
+            Text(deployment_url, style="link", justify="left"),
+            soft_wrap=True,
         )
 
         if run:
@@ -175,8 +177,9 @@ async def deploy(
             )
             flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
             app.console.print(
-                f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]"
-                f"\n└─► {flow_run_url}"
+                f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─►",
+                Text(flow_run_url, style="link", justify="left"),
+                soft_wrap=True,
             )
         else:
             app.console.print(
@@ -198,8 +201,9 @@ async def run(
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
 
     app.console.print(
-        f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]"
-        f"\n└─► {flow_run_url}"
+        f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─►",
+        Text(flow_run_url, style="link", justify="left"),
+        soft_wrap=True,
     )
 
 
