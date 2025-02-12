@@ -221,7 +221,8 @@ async def ls():
         elif isinstance(schedule.schedule, RRuleSchedule):  # type: ignore[reportUnnecessaryIsInstance]
             description = f"{schedule.schedule.rrule}"
         else:
-            raise ValueError(f"Unknown schedule type: {type(schedule.schedule)}")
+            app.console.print(f"Unknown schedule type: {type(schedule.schedule)}")
+            description = "Unknown"
 
         return Text(f"{prefix} {description})", style=style)
 
