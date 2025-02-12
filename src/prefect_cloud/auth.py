@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager, contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Queue
-from typing import AsyncGenerator, Generator, Sequence
+from typing import Any, AsyncGenerator, Generator, Sequence
 from urllib.parse import parse_qs, quote, urlparse
 from uuid import UUID
 
@@ -17,21 +17,24 @@ from pydantic import BaseModel, TypeAdapter
 from prefect_cloud.client import PrefectCloudClient, SyncPrefectCloudClient
 from prefect_cloud.utilities.tui import prompt_select_from_list
 
-if os.environ.get("CLOUD_ENV") in ("prd", "prod", None):
-    CLOUD_UI_URL = "https://app.prefect.cloud"
-    CLOUD_API_URL = "https://api.prefect.cloud/api"
-elif os.environ.get("CLOUD_ENV") == "stg":
-    CLOUD_UI_URL = "https://app.stg.prefect.dev"
-    CLOUD_API_URL = "https://api.stg.prefect.dev/api"
-elif os.environ.get("CLOUD_ENV") == "dev":
-    CLOUD_UI_URL = "https://app.prefect.dev"
-    CLOUD_API_URL = "https://api.prefect.dev/api"
-elif os.environ.get("CLOUD_ENV") == "lcl":
-    CLOUD_UI_URL = "http://localhost:3000"
-    CLOUD_API_URL = "http://localhost:8000/api"
-else:
-    raise ValueError(f"Invalid CLOUD_ENV: {os.environ.get('CLOUD_ENV')}")
 
+def _get_cloud_urls() -> tuple[str, str]:
+    """Get the appropriate Cloud UI and API URLs based on environment"""
+    env = os.environ.get("CLOUD_ENV")
+
+    if env in ("prd", "prod", None):
+        return "https://app.prefect.cloud", "https://api.prefect.cloud/api"
+    elif env == "stg":
+        return "https://app.stg.prefect.dev", "https://api.stg.prefect.dev/api"
+    elif env == "dev":
+        return "https://app.prefect.dev", "https://api.prefect.dev/api"
+    elif env == "lcl":
+        return "http://localhost:3000", "http://localhost:8000/api"
+    else:
+        raise ValueError(f"Invalid CLOUD_ENV: {env}")
+
+
+CLOUD_UI_URL, CLOUD_API_URL = _get_cloud_urls()
 
 PREFECT_HOME = Path.home() / ".prefect"
 
@@ -191,7 +194,7 @@ def login_server(result_queue: Queue[str | None]) -> Generator[str, None, None]:
     """Runs a local server to handle the callback from Prefect Cloud"""
 
     class LoginHandler(BaseHTTPRequestHandler):
-        def log_message(self, format, *args):
+        def log_message(self, format: str, *args: Any) -> None:
             pass
 
         def add_cors_headers(self) -> None:
@@ -322,7 +325,7 @@ def get_api_key() -> str | None:
     return profile.get("PREFECT_API_KEY")
 
 
-def load_profiles() -> dict:
+def load_profiles() -> dict[str, Any]:
     """Loads the profiles from the profiles file"""
     profile_path = PREFECT_HOME / "profiles.toml"
     if profile_path.exists():

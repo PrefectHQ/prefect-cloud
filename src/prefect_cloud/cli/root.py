@@ -29,7 +29,6 @@ from prefect_cloud.schemas.objects import (
 from prefect_cloud.utilities.flows import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
 
-
 app = PrefectCloudTyper()
 
 
@@ -103,6 +102,7 @@ async def deploy(
 
             # Get code contents
             github_ref = GitHubFileRef.from_url(file)
+            raw_contents: str | None = None
             try:
                 raw_contents = await get_github_raw_content(github_ref, credentials)
             except FileNotFound:
@@ -218,10 +218,11 @@ async def ls():
             description = f"{schedule.schedule.cron} ({schedule.schedule.timezone})"
         elif isinstance(schedule.schedule, IntervalSchedule):
             description = f"Every {schedule.schedule.interval} seconds"
-        elif isinstance(schedule.schedule, RRuleSchedule):
+        elif isinstance(schedule.schedule, RRuleSchedule):  # type: ignore[reportUnnecessaryIsInstance]
             description = f"{schedule.schedule.rrule}"
         else:
-            return "TODO"
+            app.console.print(f"Unknown schedule type: {type(schedule.schedule)}")
+            description = "Unknown"
 
         return Text(f"{prefix} {description})", style=style)
 
@@ -231,7 +232,7 @@ async def ls():
         )
 
         next_run = context.next_runs_by_deployment_id.get(deployment.id)
-        if next_run:
+        if next_run and next_run.expected_start_time:
             next_run_time = next_run.expected_start_time.astimezone(
                 tzlocal.get_localzone()
             ).strftime("%Y-%m-%d %H:%M:%S %Z")
