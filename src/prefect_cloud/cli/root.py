@@ -1,6 +1,7 @@
 from uuid import UUID
 
 import typer
+from typing import Any
 import tzlocal
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
@@ -275,8 +276,15 @@ async def schedule(
         ...,
         help="The schedule to set, as a cron string. Use 'none' to unschedule.",
     ),
+    parameters: dict[str, Any] = typer.Option(
+        ...,
+        "--parameters",
+        "-p",
+        help="Parameters to set in the format NAME=VALUE. Can be specified multiple times.",
+        default_factory=dict,
+    ),
 ):
-    await deployments.schedule(deployment, schedule)
+    await deployments.schedule(deployment, schedule, parameters)
 
 
 @app.command()

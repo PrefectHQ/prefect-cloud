@@ -17,6 +17,9 @@ class DeploymentScheduleCreate(BaseModel):
     active: bool = Field(
         default=True, description="Whether or not the schedule is active."
     )
+    parameters: Optional[dict[str, Any]] = Field(
+        default=None, description="The parameters for the schedule."
+    )
 
 
 class DeploymentCreate(BaseModel):
