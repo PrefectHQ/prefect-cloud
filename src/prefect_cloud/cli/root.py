@@ -1,7 +1,7 @@
 from uuid import UUID
 
 import typer
-from typing import Any
+from typing import Any, Dict
 import tzlocal
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
@@ -276,7 +276,7 @@ async def schedule(
         ...,
         help="The schedule to set, as a cron string. Use 'none' to unschedule.",
     ),
-    parameters: dict[str, Any] = typer.Option(
+    parameters: Dict[str, Any] = typer.Option(
         ...,
         "--parameters",
         "-p",
