@@ -1,6 +1,9 @@
 ---
 name: Python Tests
 
+env:
+  PY_COLORS: 1
+
 "on":
   pull_request:
     paths:
