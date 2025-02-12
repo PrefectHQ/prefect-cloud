@@ -29,7 +29,6 @@ from prefect_cloud.schemas.objects import (
 from prefect_cloud.utilities.flows import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
 
-
 app = PrefectCloudTyper()
 
 
@@ -221,7 +220,7 @@ async def ls():
         elif isinstance(schedule.schedule, RRuleSchedule):
             description = f"{schedule.schedule.rrule}"
         else:
-            return "TODO"
+            raise ValueError(f"Unknown schedule type: {type(schedule.schedule)}")
 
         return Text(f"{prefix} {description})", style=style)
 
@@ -231,7 +230,7 @@ async def ls():
         )
 
         next_run = context.next_runs_by_deployment_id.get(deployment.id)
-        if next_run:
+        if next_run and next_run.expected_start_time:
             next_run_time = next_run.expected_start_time.astimezone(
                 tzlocal.get_localzone()
             ).strftime("%Y-%m-%d %H:%M:%S %Z")

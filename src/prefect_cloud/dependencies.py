@@ -1,7 +1,8 @@
 import subprocess
-import tomllib
 from pathlib import Path
 from typing import Self
+
+import tomllib
 
 
 class InvalidDependencies(Exception):
