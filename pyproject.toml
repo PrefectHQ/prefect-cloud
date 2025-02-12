@@ -3,9 +3,7 @@ name = "prefect-cloud"
 version = "0.1.0a2"
 description = "Package for easily deploying to Prefect Cloud."
 readme = "README.md"
-authors = [
-    { name = "Prefect Technologies, Inc.", email = "help@prefect.io"}
-]
+authors = [{ name = "Prefect Technologies, Inc.", email = "help@prefect.io" }]
 
 requires-python = ">=3.10"
 dependencies = [
@@ -52,9 +50,5 @@ build-backend = "hatchling.build"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 colors = "yes"
-testpaths = [
-    "tests",
-]
-env = [
-    "CLOUD_ENV=prd"
-]
+testpaths = ["tests"]
+env = ["CLOUD_ENV=prd"]

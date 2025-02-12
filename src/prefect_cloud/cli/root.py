@@ -102,6 +102,7 @@ async def deploy(
 
             # Get code contents
             github_ref = GitHubFileRef.from_url(file)
+            raw_contents: str | None = None
             try:
                 raw_contents = await get_github_raw_content(github_ref, credentials)
             except FileNotFound:
@@ -217,7 +218,7 @@ async def ls():
             description = f"{schedule.schedule.cron} ({schedule.schedule.timezone})"
         elif isinstance(schedule.schedule, IntervalSchedule):
             description = f"Every {schedule.schedule.interval} seconds"
-        elif isinstance(schedule.schedule, RRuleSchedule):
+        elif isinstance(schedule.schedule, RRuleSchedule):  # type: ignore[reportUnnecessaryIsInstance]
             description = f"{schedule.schedule.rrule}"
         else:
             raise ValueError(f"Unknown schedule type: {type(schedule.schedule)}")

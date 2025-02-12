@@ -3,8 +3,8 @@ from typing import Any
 
 from prefect_cloud.utilities.callables import (
     ParameterSchema,
-    _generate_signature_from_source,
-    _get_docstring_from_source,
+    _generate_signature_from_source,  # type: ignore[reportPrivateUsage]
+    _get_docstring_from_source,  # type: ignore[reportPrivateUsage]
     generate_parameter_schema,
     parameter_docstrings,
 )

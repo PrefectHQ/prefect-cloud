@@ -62,7 +62,7 @@ async def schedule(deployment_: str, schedule: str):
 
         if schedule and schedule.lower() != "none":
             localzone = tzlocal.get_localzone()
-            if isinstance(localzone, zoneinfo.ZoneInfo):
+            if isinstance(localzone, zoneinfo.ZoneInfo):  # type: ignore[reportUnnecessaryIsInstance]
                 local_tz = localzone.key
             else:  # pragma: no cover
                 local_tz = "UTC"

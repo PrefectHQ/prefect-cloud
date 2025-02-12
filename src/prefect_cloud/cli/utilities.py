@@ -4,7 +4,7 @@ import asyncio
 import functools
 import inspect
 import traceback
-from typing import Any, Callable
+from typing import Any, Callable, NoReturn
 
 import typer
 from click import ClickException
@@ -15,7 +15,9 @@ from rich.theme import Theme
 from prefect_cloud.utilities.exception import MissingProfileError
 
 
-def exit_with_error(message: str | Exception, progress: Progress | None = None) -> None:
+def exit_with_error(
+    message: str | Exception, progress: Progress | None = None
+) -> NoReturn:
     from prefect_cloud.cli.root import app
 
     if progress:
@@ -41,7 +43,7 @@ def with_cli_exception_handling(fn: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def process_key_value_pairs(env: list[str]) -> dict[str, str]:
-    invalid_pairs = []
+    invalid_pairs: list[str] = []
 
     for e in env:
         if "=" not in e:
