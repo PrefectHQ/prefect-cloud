@@ -4,11 +4,9 @@ from uuid import UUID
 
 import tzlocal
 
-from prefect_cloud.schemas.objects import Flow, DeploymentFlowRun, CronSchedule
-from prefect_cloud.schemas.responses import DeploymentResponse
-
-
 from prefect_cloud.auth import get_prefect_cloud_client
+from prefect_cloud.schemas.objects import CronSchedule, DeploymentFlowRun, Flow
+from prefect_cloud.schemas.responses import DeploymentResponse
 
 
 @dataclass
@@ -28,8 +26,8 @@ async def list() -> DeploymentListContext:
         )
         next_runs_by_deployment_id: dict[UUID, DeploymentFlowRun] = {}
         for run in next_runs:
-            if run.deployment_id not in next_runs_by_deployment_id:
-                next_runs_by_deployment_id[run.deployment_id] = run
+            if (_id := run.deployment_id) and _id not in next_runs_by_deployment_id:
+                next_runs_by_deployment_id[_id] = run
 
     return DeploymentListContext(
         deployments=deployments,
@@ -64,7 +62,7 @@ async def schedule(deployment_: str, schedule: str):
 
         if schedule and schedule.lower() != "none":
             localzone = tzlocal.get_localzone()
-            if isinstance(localzone, zoneinfo.ZoneInfo):
+            if isinstance(localzone, zoneinfo.ZoneInfo):  # type: ignore[reportUnnecessaryIsInstance]
                 local_tz = localzone.key
             else:  # pragma: no cover
                 local_tz = "UTC"

@@ -30,7 +30,7 @@ class Dependencies:
     @classmethod
     def from_requirements_file(cls, filename: str) -> Self:
         path = Path(filename)
-        dependencies = []
+        dependencies: list[str] = []
         for line in path.read_text().splitlines():
             line = line.strip()
 
@@ -56,7 +56,7 @@ class Dependencies:
 
 
 def get_dependencies(all_dependencies: list[str]) -> list[str]:
-    extracted = []
+    extracted: list[str] = []
 
     for dependency in all_dependencies:
         path = Path(dependency)

@@ -101,7 +101,7 @@ async def get_github_raw_content(
     github_ref: GitHubFileRef, credentials: str | None = None
 ) -> str:
     """Get raw content of a file from GitHub."""
-    headers = {}
+    headers: dict[str, str] = {}
     if credentials:
         headers["Authorization"] = f"Bearer {credentials}"
 
