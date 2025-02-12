@@ -4,11 +4,7 @@ import asyncio
 import functools
 import inspect
 import traceback
-<<<<<<< HEAD
 from typing import Any, Callable, NoReturn
-=======
-from typing import Any, Callable
->>>>>>> 5815134 (smol typing changes)
 
 import typer
 from click import ClickException
@@ -19,13 +15,9 @@ from rich.theme import Theme
 from prefect_cloud.utilities.exception import MissingProfileError
 
 
-<<<<<<< HEAD
 def exit_with_error(
     message: str | Exception, progress: Progress | None = None
 ) -> NoReturn:
-=======
-def exit_with_error(message: str | Exception, progress: Progress | None = None) -> None:
->>>>>>> 5815134 (smol typing changes)
     from prefect_cloud.cli.root import app
 
     if progress:
