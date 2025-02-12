@@ -34,12 +34,15 @@ app = PrefectCloudTyper()
 
 @app.command()
 async def deploy(
-    function: str,
+    function: str = typer.Argument(..., help="The function to deploy, e.g. `main`"),
     file: str = typer.Option(
         ...,
         "--from",
         "-f",
-        help=".py file containing the function to deploy.",
+        help="GitHub file path. Can use:\n"
+        "  - gh/owner/repo/path/to/file.py\n"
+        "  - github.com/owner/repo/path/to/file.py\n"
+        "  - https://github.com/owner/repo/blob/branch/path/to/file.py",
     ),
     dependencies: list[str] = typer.Option(
         ...,
@@ -107,8 +110,8 @@ async def deploy(
                 raw_contents = await get_github_raw_content(github_ref, credentials)
             except FileNotFound:
                 exit_with_error(
-                    "Unable to access file in Github. "
-                    "If it's in a private repository retry with `--credentials`.",
+                    f"Unable to access file in GitHub at [yellow]{github_ref.owner}/{github_ref.repo}/{github_ref.filepath}[/yellow]. "
+                    "\n\nIf it's in a private repository retry with `--credentials`.",
                     progress=progress,
                 )
 
@@ -239,12 +242,15 @@ async def ls():
         else:
             next_run_time = ""
 
-        table.add_row(
-            f"{context.flows_by_id[deployment.flow_id].name}/{deployment.name}",
-            scheduling,
-            next_run_time,
-            str(deployment.id),
-        )
+        if not (flow := context.flows_by_id.get(deployment.flow_id)):
+            continue  # why might i hit a KeyError here?
+        else:
+            table.add_row(
+                f"{flow.name}/{deployment.name}",
+                scheduling,
+                next_run_time,
+                str(deployment.id),
+            )
 
     app.console.print(table)
 

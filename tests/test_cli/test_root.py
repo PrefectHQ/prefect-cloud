@@ -7,8 +7,8 @@ from typing import Iterable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import readchar
-from rich.console import Console
 from click.testing import Result
+from rich.console import Console
 from typer.testing import CliRunner
 
 from prefect_cloud.cli.root import app
@@ -317,7 +317,7 @@ def test_deploy_private_repo_without_credentials():
                         "prefect",
                     ],
                     expected_code=1,
-                    expected_output_contains=("Unable to access file in Github."),
+                    expected_output_contains=("Unable to access file in GitHub"),
                 )
 
 
