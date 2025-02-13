@@ -32,8 +32,8 @@ from prefect_cloud.utilities.blocks import safe_block_name
 
 app = PrefectCloudTyper(
     rich_markup_mode=True,
-    help="Deploy and manage your Prefect flows in the cloud",
-    short_help="Deploy and manage your Prefect flows in the cloud",
+    help="Deploy with Prefect Cloud",
+    short_help="Deploy with Prefect Cloud",
 )
 
 
