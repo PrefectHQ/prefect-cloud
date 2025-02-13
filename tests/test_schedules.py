@@ -329,15 +329,17 @@ async def test_schedule_accepts_parameters(
     ).mock(
         return_value=Response(
             201,
-            json=DeploymentSchedule(
-                id=uuid4(),
-                schedule=CronSchedule(
-                    cron="0 12 * * *",
-                    timezone="UTC",
-                ),
-                active=True,
-                parameters={"key": "value"},
-            ).model_dump(mode="json"),
+            json=[
+                DeploymentSchedule(
+                    id=uuid4(),
+                    schedule=CronSchedule(
+                        cron="0 12 * * *",
+                        timezone="UTC",
+                    ),
+                    active=True,
+                    parameters={"key": "value"},
+                ).model_dump(mode="json")
+            ],
         )
     )
 
