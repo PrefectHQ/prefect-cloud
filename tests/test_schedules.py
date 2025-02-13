@@ -5,6 +5,7 @@ import respx
 from httpx import Response
 
 from prefect_cloud import deployments
+from prefect_cloud.client import ObjectNotFound
 from prefect_cloud.schemas.objects import (
     CronSchedule,
     DeploymentFlowRun,
@@ -215,50 +216,6 @@ async def test_schedule_none_removes_all_schedules(
     assert len(cloud_api.calls) == 2  # Only get and delete, no create
 
 
-async def test_pause_deployment(
-    cloud_api: respx.Router,
-    mock_deployment_with_schedule: DeploymentResponse,
-    api_url: str,
-):
-    cloud_api.get(f"{api_url}/deployments/{mock_deployment_with_schedule.id}").mock(
-        return_value=Response(
-            200, json=mock_deployment_with_schedule.model_dump(mode="json")
-        )
-    )
-    patch_route = cloud_api.patch(
-        f"{api_url}"
-        f"/deployments/{mock_deployment_with_schedule.id}"
-        f"/schedules/{mock_deployment_with_schedule.schedules[0].id}"
-    ).mock(return_value=Response(204))
-
-    await deployments.pause(str(mock_deployment_with_schedule.id))
-
-    assert patch_route.called
-    assert patch_route.calls.last.request.content == b'{"active":false}'
-
-
-async def test_resume_deployment(
-    cloud_api: respx.Router,
-    mock_deployment_with_schedule: DeploymentResponse,
-    api_url: str,
-):
-    cloud_api.get(f"{api_url}/deployments/{mock_deployment_with_schedule.id}").mock(
-        return_value=Response(
-            200, json=mock_deployment_with_schedule.model_dump(mode="json")
-        )
-    )
-    patch_route = cloud_api.patch(
-        f"{api_url}"
-        f"/deployments/{mock_deployment_with_schedule.id}"
-        f"/schedules/{mock_deployment_with_schedule.schedules[0].id}"
-    ).mock(return_value=Response(204))
-
-    await deployments.resume(str(mock_deployment_with_schedule.id))
-
-    assert patch_route.called
-    assert patch_route.calls.last.request.content == b'{"active":true}'
-
-
 async def test_list_returns_empty_context_when_no_deployments(
     cloud_api: respx.Router, api_url: str
 ):
@@ -350,3 +307,62 @@ async def test_schedule_accepts_parameters(
     assert schedule_route.called
     request_body = schedule_route.calls.last.request.read().decode()
     assert '"parameters":{"key":"value"}' in request_body
+
+
+async def test_delete_deployment(
+    cloud_api: respx.Router, mock_deployment: DeploymentResponse, api_url: str
+):
+    """Test that a deployment can be deleted"""
+    # Mock the GET request to verify deployment exists
+    cloud_api.get(f"{api_url}/deployments/{mock_deployment.id}").mock(
+        return_value=Response(200, json=mock_deployment.model_dump(mode="json"))
+    )
+
+    # Mock the DELETE request
+    delete_route = cloud_api.delete(f"{api_url}/deployments/{mock_deployment.id}").mock(
+        return_value=Response(204)
+    )
+
+    await deployments.delete(str(mock_deployment.id))
+
+    assert delete_route.called
+    assert (
+        delete_route.calls.last.request.url
+        == f"{api_url}/deployments/{mock_deployment.id}"
+    )
+
+
+async def test_delete_deployment_by_name(
+    cloud_api: respx.Router, mock_deployment: DeploymentResponse, api_url: str
+):
+    """Test that a deployment can be deleted using flow_name/deployment_name format"""
+    # Mock the GET request for name lookup
+    cloud_api.get(f"{api_url}/deployments/name/my-flow/my-deployment").mock(
+        return_value=Response(200, json=mock_deployment.model_dump(mode="json"))
+    )
+
+    # Mock the DELETE request
+    delete_route = cloud_api.delete(f"{api_url}/deployments/{mock_deployment.id}").mock(
+        return_value=Response(204)
+    )
+
+    await deployments.delete("my-flow/my-deployment")
+
+    assert delete_route.called
+    assert (
+        delete_route.calls.last.request.url
+        == f"{api_url}/deployments/{mock_deployment.id}"
+    )
+
+
+async def test_delete_nonexistent_deployment(cloud_api: respx.Router, api_url: str):
+    """Test that deleting a nonexistent deployment raises ObjectNotFound"""
+    deployment_id = "11111111-1111-1111-1111-111111111111"
+
+    # Mock 404 response for nonexistent deployment
+    cloud_api.get(f"{api_url}/deployments/{deployment_id}").mock(
+        return_value=Response(404, json={"detail": "Deployment not found"})
+    )
+
+    with pytest.raises(ObjectNotFound):
+        await deployments.delete(deployment_id)

@@ -242,7 +242,7 @@ async def schedule(
         help="Name or ID of the deployment to schedule",
         autocompletion=completions.complete_deployment,
     ),
-    schedule: str = typer.Argument(
+    schedule: str = typer.Option(
         ...,
         help="Cron schedule string or 'none' to unschedule",
     ),
@@ -252,6 +252,12 @@ async def schedule(
         "-p",
         help="Flow Run parameters in NAME=VALUE format",
         default_factory=list,
+    ),
+    remove: bool = typer.Option(
+        False,
+        "--remove",
+        "-r",
+        help="Remove the schedule",
     ),
 ):
     """
@@ -267,8 +273,13 @@ async def schedule(
         Remove schedule:
         $ prefect-cloud schedule flow_name/deployment_name none
     """
-    parameters_dict = process_key_value_pairs(parameters) if parameters else {}
-    await deployments.schedule(deployment, schedule, parameters_dict)
+    if remove:
+        await deployments.schedule(deployment, "none")
+    else:
+        if not schedule:
+            exit_with_error("Schedule cannot be empty")
+        parameters_dict = process_key_value_pairs(parameters) if parameters else {}
+        await deployments.schedule(deployment, schedule, parameters_dict)
 
 
 @app.command(rich_help_panel="Manage Deployments")
@@ -329,31 +340,17 @@ async def ls():
 
 
 @app.command(rich_help_panel="Manage Deployments")
-async def pause(
+async def delete(
     deployment: str = typer.Argument(
         ...,
-        help="Name or ID of the deployment to pause",
+        help="Name or ID of the deployment to delete",
         autocompletion=completions.complete_deployment,
     ),
 ):
     """
-    Pause a scheduled deployment
+    Delete a deployment
     """
-    await deployments.pause(deployment)
-
-
-@app.command(rich_help_panel="Manage Deployments")
-async def resume(
-    deployment: str = typer.Argument(
-        ...,
-        help="Name or ID of the deployment to resume",
-        autocompletion=completions.complete_deployment,
-    ),
-):
-    """
-    Resume a paused deployment
-    """
-    await deployments.resume(deployment)
+    await deployments.delete(deployment)
 
 
 @app.command(rich_help_panel="Auth")
