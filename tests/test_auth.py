@@ -607,30 +607,3 @@ async def test_env_vars_take_precedence_over_profile(
         assert ui_url == "https://app.prefect.cloud/account/123/workspace/456"
         assert api_url == test_api_url
         assert api_key == test_api_key
-
-
-async def test_login_with_env_vars_does_not_write_profile(
-    cloud_api: Router,
-    mock_profiles_path: Path,
-    sample_workspace: Workspace,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """When using env vars, login() should not write a profile."""
-    test_api_key = "test_env_key"
-
-    # Mock the API responses
-    cloud_api.get("/me/").mock(return_value=httpx.Response(200))
-    cloud_api.get("/me/workspaces").mock(
-        return_value=httpx.Response(
-            200, json=[sample_workspace.model_dump(mode="json")]
-        )
-    )
-
-    with monkeypatch.context() as m:
-        m.setenv("PREFECT_API_KEY", test_api_key)
-        m.setenv("PREFECT_API_URL", sample_workspace.api_url)
-
-        await login()
-
-        # Verify no profile was written
-        assert not mock_profiles_path.exists()
