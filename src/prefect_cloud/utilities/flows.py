@@ -1,22 +1,6 @@
 import ast
 from typing import Any
 
-from prefect_cloud.utilities.callables import (
-    ParameterSchema,
-    generate_parameter_schema,
-    generate_signature_from_source,
-    get_docstring_from_source,
-    parameter_docstrings,
-)
-
-
-def get_parameter_schema_from_content(
-    content: str, function_name: str
-) -> ParameterSchema:
-    signature = generate_signature_from_source(content, function_name)
-    docstring = get_docstring_from_source(content, function_name)
-    return generate_parameter_schema(signature, parameter_docstrings(docstring))
-
 
 class FlowDecorator(ast.NodeTransformer):
     def __init__(self, target_name: str):
