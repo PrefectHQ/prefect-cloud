@@ -10,6 +10,11 @@ First, install `uv` if you haven't already. See [installation docs here](https:/
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+Create and activate a virtual environment:
+```bash
+uv venv && source .venv/bin/activate
+```
+
 Then install prefect-cloud:
 ```bash
 uv pip install prefect-cloud
