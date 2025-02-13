@@ -20,18 +20,31 @@ from prefect_cloud.utilities.tui import prompt_select_from_list
 
 def _get_cloud_urls() -> tuple[str, str]:
     """Get the appropriate Cloud UI and API URLs based on environment"""
-    env = os.environ.get("CLOUD_ENV")
 
-    if env in ("prd", "prod", None):
-        return "https://app.prefect.cloud", "https://api.prefect.cloud/api"
+    env = os.environ.get("CLOUD_ENV")
+    from_env = os.environ.get("PREFECT_CLOUD_API_URL")
+
+    if from_env:
+        cloud_api_url = from_env
+    elif env in ("prd", "prod", None):
+        cloud_api_url = "https://api.prefect.cloud/api"
     elif env == "stg":
-        return "https://app.stg.prefect.dev", "https://api.stg.prefect.dev/api"
+        cloud_api_url = "https://api.stg.prefect.dev/api"
     elif env == "dev":
-        return "https://app.prefect.dev", "https://api.prefect.dev/api"
+        cloud_api_url = "https://api.prefect.dev/api"
     elif env == "lcl":
-        return "http://localhost:3000", "http://localhost:8000/api"
+        cloud_api_url = "http://localhost:8000/api"
     else:
         raise ValueError(f"Invalid CLOUD_ENV: {env}")
+
+    if os.environ.get("PREFECT_CLOUD_UI_URL"):
+        cloud_ui_url = os.environ["PREFECT_CLOUD_UI_URL"]
+    else:
+        cloud_ui_url = cloud_api_url.replace("https://api.", "https://app.").replace(
+            "/api", ""
+        )
+
+    return cloud_ui_url, cloud_api_url
 
 
 CLOUD_UI_URL, CLOUD_API_URL = _get_cloud_urls()
@@ -137,11 +150,7 @@ async def get_cloud_urls_or_login() -> tuple[str, str, str]:
 
 def get_cloud_urls_without_login() -> tuple[str | None, str | None, str | None]:
     """Gets the cloud UI URL, API URL, and API key"""
-    profile = get_cloud_profile()
-    if not profile:
-        return None, None, None
-
-    api_url: str | None = profile.get("PREFECT_API_URL")
+    api_url: str | None = get_api_url()
     if not api_url:
         return None, None, None
 
@@ -152,7 +161,7 @@ def get_cloud_urls_without_login() -> tuple[str | None, str | None, str | None]:
         .replace("/workspaces/", "/workspace/")
     )
 
-    api_key = profile.get("PREFECT_API_KEY")
+    api_key = get_api_key()
     if not api_key:
         return None, None, None
 
@@ -317,12 +326,24 @@ async def prompt_for_workspace(api_key: str) -> Workspace | None:
     )
 
 
-def get_api_key() -> str | None:
-    """Gets the API key for the current cloud profile"""
-    profile = get_cloud_profile()
-    if not profile:
+def get_from_env_or_profile(key: str) -> str | None:
+    """Gets value from the environment or the current cloud profile"""
+    profile = get_cloud_profile() or {}
+
+    if from_env := os.environ.get(key):
+        return from_env
+    elif from_profile := profile.get(key):
+        return from_profile
+    else:
         return None
-    return profile.get("PREFECT_API_KEY")
+
+
+def get_api_key() -> str | None:
+    return get_from_env_or_profile("PREFECT_API_KEY")
+
+
+def get_api_url() -> str | None:
+    return get_from_env_or_profile("PREFECT_API_URL")
 
 
 def load_profiles() -> dict[str, Any]:
