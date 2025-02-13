@@ -50,6 +50,7 @@ async def deploy(
             "\n\n - Github: [https://]github.com/owner/repo/(blob|tree)/ref/path/to/file"
         ),
         rich_help_panel="Source",
+        show_default=False,
     ),
     credentials: str | None = typer.Option(
         None,
@@ -57,6 +58,7 @@ async def deploy(
         "-c",
         help="Optional credentials if code is in a private repository. ",
         rich_help_panel="Source",
+        show_default=False,
     ),
     dependencies: list[str] = typer.Option(
         ...,
@@ -68,6 +70,7 @@ async def deploy(
         "`--with requirements.txt / pyproject.toml`.",
         default_factory=list,
         rich_help_panel="Configuration",
+        show_default=False,
     ),
     env: list[str] = typer.Option(
         ...,
@@ -76,6 +79,7 @@ async def deploy(
         help="Environment variables to set in the format KEY=VALUE. Can be specified multiple times.",
         default_factory=list,
         rich_help_panel="Configuration",
+        show_default=False,
     ),
     run: bool = typer.Option(
         False,
@@ -90,6 +94,7 @@ async def deploy(
         help="Parameters to set in the format NAME=VALUE. Can be specified multiple times. Only used with --run.",
         default_factory=list,
         rich_help_panel="Run Options",
+        show_default=False,
     ),
 ):
     """
