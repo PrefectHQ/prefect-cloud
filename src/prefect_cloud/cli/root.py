@@ -126,17 +126,10 @@ async def deploy(
         ) as progress:
             task = progress.add_task("Inspecting code...", total=None)
 
-            # Process env vars
-            try:
-                env_vars = process_key_value_pairs(env) if env else {}
-            except ValueError as e:
-                exit_with_error(str(e), progress=progress)
-
-            # Process parameters
-            try:
-                func_kwargs = process_key_value_pairs(parameters) if parameters else {}
-            except ValueError as e:
-                exit_with_error(str(e), progress=progress)
+            # Pre-process CLI arguments
+            pip_packages = get_dependencies(dependencies)
+            env_vars = process_key_value_pairs(env, progress=progress)
+            func_kwargs = process_key_value_pairs(parameters, progress=progress)
 
             # Get code contents
             github_ref = GitHubFileRef.from_url(file)
@@ -163,8 +156,6 @@ async def deploy(
             progress.update(task, description="Provisioning infrastructure...")
             work_pool = await client.ensure_managed_work_pool()
 
-            deployment_name = f"{function}"
-
             credentials_name = None
             if credentials:
                 progress.update(task, description="Syncing credentials...")
@@ -175,15 +166,9 @@ async def deploy(
 
             pull_steps = [to_pull_step(github_ref, credentials_name)]
 
-            # TODO temporary: remove this when the PR is merged
-            pip_packages = [
-                "git+https://github.com//PrefectHQ/prefect.git@add-missing-convert-statement"
-            ]
-            if dependencies:
-                pip_packages += get_dependencies(dependencies)
-
             progress.update(task, description="Deploying code...")
 
+            deployment_name = f"{function}"
             deployment_id = await client.create_managed_deployment(
                 deployment_name,
                 github_ref.filepath,
