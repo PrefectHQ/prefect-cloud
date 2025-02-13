@@ -312,3 +312,41 @@ async def test_list_returns_populated_context(
     assert mock_flow.id in result.flows_by_id
     assert len(result.next_runs_by_deployment_id) == 1
     assert mock_deployment.id in result.next_runs_by_deployment_id
+
+
+async def test_schedule_accepts_parameters(
+    cloud_api: respx.Router, mock_deployment: DeploymentResponse, api_url: str
+):
+    cloud_api.get(f"{api_url}/deployments/{mock_deployment.id}").mock(
+        return_value=Response(200, json=mock_deployment.model_dump(mode="json"))
+    )
+    cloud_api.delete(
+        f"{api_url}/deployments/{mock_deployment.id}/schedules/{mock_deployment.id}"
+    ).mock(return_value=Response(204))
+
+    schedule_route = cloud_api.post(
+        f"{api_url}/deployments/{mock_deployment.id}/schedules"
+    ).mock(
+        return_value=Response(
+            201,
+            json=[
+                DeploymentSchedule(
+                    id=uuid4(),
+                    schedule=CronSchedule(
+                        cron="0 12 * * *",
+                        timezone="UTC",
+                    ),
+                    active=True,
+                    parameters={"key": "value"},
+                ).model_dump(mode="json")
+            ],
+        )
+    )
+
+    await deployments.schedule(
+        str(mock_deployment.id), "0 12 * * *", parameters={"key": "value"}
+    )
+
+    assert schedule_route.called
+    request_body = schedule_route.calls.last.request.read().decode()
+    assert '"parameters":{"key":"value"}' in request_body

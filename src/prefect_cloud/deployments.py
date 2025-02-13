@@ -1,5 +1,6 @@
 import zoneinfo
 from dataclasses import dataclass
+from typing import Any, Optional
 from uuid import UUID
 
 import tzlocal
@@ -53,7 +54,9 @@ async def run(deployment_: str) -> DeploymentFlowRun:
         return await client.create_flow_run_from_deployment_id(deployment.id)
 
 
-async def schedule(deployment_: str, schedule: str):
+async def schedule(
+    deployment_: str, schedule: str, parameters: Optional[dict[str, Any]] = None
+):
     deployment = await _get_deployment(deployment_)
 
     async with await get_prefect_cloud_client() as client:
@@ -68,7 +71,9 @@ async def schedule(deployment_: str, schedule: str):
                 local_tz = "UTC"
 
             new_schedule = CronSchedule(cron=schedule, timezone=local_tz)
-            await client.create_deployment_schedule(deployment.id, new_schedule, True)
+            await client.create_deployment_schedule(
+                deployment.id, new_schedule, True, parameters
+            )
 
 
 async def pause(deployment_: str):

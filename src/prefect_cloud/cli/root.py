@@ -261,6 +261,13 @@ async def schedule(
         ...,
         help="Cron schedule string or 'none' to unschedule",
     ),
+    parameters: list[str] = typer.Option(
+        ...,
+        "--parameters",
+        "-p",
+        help="Flow Run parameters in NAME=VALUE format",
+        default_factory=list,
+    ),
 ):
     """
     Set a deployment to run on a schedule
@@ -275,7 +282,8 @@ async def schedule(
         Remove schedule:
         $ prefect-cloud schedule flow_name/deployment_name none
     """
-    await deployments.schedule(deployment, schedule)
+    parameters_dict = process_key_value_pairs(parameters) if parameters else {}
+    await deployments.schedule(deployment, schedule, parameters_dict)
 
 
 @app.command(rich_help_panel="Manage Deployments")

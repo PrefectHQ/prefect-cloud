@@ -549,6 +549,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         deployment_id: "UUID",
         schedule: CronSchedule,
         active: bool,
+        parameters: dict[str, Any] | None = None,
     ) -> "DeploymentSchedule":
         """
         Create deployment schedules.
@@ -570,6 +571,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         json = DeploymentScheduleCreate(
             schedule=schedule,
             active=active,
+            parameters=parameters,
         ).model_dump(mode="json")
 
         response = await self.request(
