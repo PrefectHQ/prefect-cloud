@@ -511,3 +511,126 @@ async def test_get_cloud_urls_or_login_url_transformations(
 
     ui_url, _, _ = await get_cloud_urls_or_login()
     assert ui_url == expected_ui_url
+
+
+async def test_get_cloud_urls_without_login_with_env_vars(
+    mock_profiles_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """get_cloud_urls_without_login() should use environment variables when set."""
+    test_api_key = "test_env_key"
+    test_api_url = "https://api.prefect.cloud/api/accounts/123/workspaces/456"
+
+    with monkeypatch.context() as m:
+        m.setenv("PREFECT_API_KEY", test_api_key)
+        m.setenv("PREFECT_API_URL", test_api_url)
+
+        ui_url, api_url, api_key = get_cloud_urls_without_login()
+
+        assert ui_url == "https://app.prefect.cloud/account/123/workspace/456"
+        assert api_url == test_api_url
+        assert api_key == test_api_key
+
+
+async def test_login_with_env_vars_no_profile(
+    cloud_api: Router,
+    mock_profiles_path: Path,
+    sample_workspace: Workspace,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """login() should use environment variables when set, even without a profile."""
+    test_api_key = "test_env_key"
+
+    # Mock the API responses
+    cloud_api.get("/me/").mock(return_value=httpx.Response(200))
+    cloud_api.get("/me/workspaces").mock(
+        return_value=httpx.Response(
+            200, json=[sample_workspace.model_dump(mode="json")]
+        )
+    )
+
+    with monkeypatch.context() as m:
+        m.setenv("PREFECT_API_KEY", test_api_key)
+        with patch("prefect_cloud.auth.login_interactively") as mock_login:
+            await login()
+            # Should not call interactive login since we have env var
+            mock_login.assert_not_called()
+
+
+async def test_get_cloud_urls_or_login_with_env_vars_no_profile(
+    mock_profiles_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """get_cloud_urls_or_login() should use environment variables when no profile exists."""
+    test_api_key = "test_env_key"
+    test_api_url = "https://api.prefect.cloud/api/accounts/123/workspaces/456"
+
+    with monkeypatch.context() as m:
+        m.setenv("PREFECT_API_KEY", test_api_key)
+        m.setenv("PREFECT_API_URL", test_api_url)
+
+        ui_url, api_url, api_key = await get_cloud_urls_or_login()
+
+        assert ui_url == "https://app.prefect.cloud/account/123/workspace/456"
+        assert api_url == test_api_url
+        assert api_key == test_api_key
+
+
+async def test_env_vars_take_precedence_over_profile(
+    mock_profiles_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Environment variables should take precedence over profile values."""
+    # Set up a profile with different values
+    profile = {
+        "profiles": {
+            "prefect-cloud": {
+                "PREFECT_API_KEY": "profile_key",
+                "PREFECT_API_URL": "https://api.prefect.cloud/api/accounts/999/workspaces/999",
+            }
+        }
+    }
+    mock_profiles_path.parent.mkdir(parents=True, exist_ok=True)
+    mock_profiles_path.write_text(toml.dumps(profile))
+
+    # Set environment variables that should override the profile
+    test_api_key = "env_var_key"
+    test_api_url = "https://api.prefect.cloud/api/accounts/123/workspaces/456"
+
+    with monkeypatch.context() as m:
+        m.setenv("PREFECT_API_KEY", test_api_key)
+        m.setenv("PREFECT_API_URL", test_api_url)
+
+        ui_url, api_url, api_key = get_cloud_urls_without_login()
+
+        # Should use env var values, not profile values
+        assert ui_url == "https://app.prefect.cloud/account/123/workspace/456"
+        assert api_url == test_api_url
+        assert api_key == test_api_key
+
+
+async def test_login_with_env_vars_does_not_write_profile(
+    cloud_api: Router,
+    mock_profiles_path: Path,
+    sample_workspace: Workspace,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """When using env vars, login() should not write a profile."""
+    test_api_key = "test_env_key"
+
+    # Mock the API responses
+    cloud_api.get("/me/").mock(return_value=httpx.Response(200))
+    cloud_api.get("/me/workspaces").mock(
+        return_value=httpx.Response(
+            200, json=[sample_workspace.model_dump(mode="json")]
+        )
+    )
+
+    with monkeypatch.context() as m:
+        m.setenv("PREFECT_API_KEY", test_api_key)
+        m.setenv("PREFECT_API_URL", sample_workspace.api_url)
+
+        await login()
+
+        # Verify no profile was written
+        assert not mock_profiles_path.exists()
