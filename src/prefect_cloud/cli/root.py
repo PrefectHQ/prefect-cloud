@@ -30,58 +30,92 @@ from prefect_cloud.utilities.flows import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
 from prefect_cloud.utilities.blocks import safe_block_name
 
-app = PrefectCloudTyper()
+app = PrefectCloudTyper(
+    rich_markup_mode=True,
+    help="Deploy with Prefect Cloud",
+    short_help="Deploy with Prefect Cloud",
+)
 
 
-@app.command()
+@app.command(rich_help_panel="Deploy")
 async def deploy(
-    function: str,
+    function: str = typer.Argument(
+        help="The Python function to deploy as a flow",
+        rich_help_panel="Arguments",
+        show_default=False,
+    ),
     file: str = typer.Option(
         ...,
         "--from",
         "-f",
         help=(
-            "URL to a .py file containing the function to deploy. Supported formats: \n\n"
-            "-- Github: [https://]github.com/owner/repo/(blob|tree)/ref/path/to/file"
+            "Source file containing the function to deploy. Supports:\n\n"
+            "• GitHub: e.g. github.com/owner/repo/blob/ref/path/to/file\n"
         ),
-    ),
-    dependencies: list[str] = typer.Option(
-        ...,
-        "--with",
-        "-d",
-        help="Dependencies to include. Can be a single package `--with prefect`, "
-        "multiple packages `--with prefect --with pandas`, "
-        "the path to a requirements or pyproject.toml file "
-        "`--with requirements.txt / pyproject.toml`.",
-        default_factory=list,
-    ),
-    env: list[str] = typer.Option(
-        ...,
-        "--env",
-        "-e",
-        help="Environment variables to set in the format KEY=VALUE. Can be specified multiple times.",
-        default_factory=list,
+        rich_help_panel="Source",
+        show_default=False,
     ),
     credentials: str | None = typer.Option(
         None,
         "--credentials",
         "-c",
-        help="Optional credentials if code is in a private repository. ",
+        help="GitHub credentials for accessing private repositories",
+        rich_help_panel="Source",
+        show_default=False,
     ),
-    run: bool = typer.Option(
-        False,
-        "--run",
-        "-r",
-        help="Run immediately after deploying.",
+    dependencies: list[str] = typer.Option(
+        ...,
+        "--with",
+        "-d",
+        help=(
+            "Python dependencies to include:\n"
+            "• Single package: --with prefect\n"
+            "• Multiple packages: --with prefect --with pandas\n"
+            "• From file: --with requirements.txt or --with pyproject.toml"
+        ),
+        default_factory=list,
+        rich_help_panel="Configuration",
+        show_default=False,
+    ),
+    env: list[str] = typer.Option(
+        ...,
+        "--env",
+        "-e",
+        help="Environment variables in KEY=VALUE format",
+        default_factory=list,
+        rich_help_panel="Configuration",
+        show_default=False,
     ),
     parameters: list[str] = typer.Option(
         ...,
         "--parameters",
         "-p",
-        help="Parameters to set in the format NAME=VALUE. Can be specified multiple times. Only used with --run.",
+        help="Flow Run parameters in NAME=VALUE format (only used with --run)",
         default_factory=list,
+        rich_help_panel="Execution",
+        show_default=False,
+    ),
+    run: bool = typer.Option(
+        False,
+        "--run",
+        "-r",
+        help="Run the deployment immediately after creation",
+        rich_help_panel="Execution",
     ),
 ):
+    """
+    Deploy a Python function as a Prefect flow
+
+    Examples:
+        Deploy a function:
+        $ prefect-cloud deploy my_function --from github.com/owner/repo/blob/main/flow.py
+
+        Deploy and run immediately:
+        $ prefect-cloud deploy my_function -f github.com/owner/repo/blob/main/flow.py --run
+
+        Deploy with dependencies:
+        $ prefect-cloud deploy my_function -f github.com/owner/repo/blob/main/flow.py --with prefect --with pandas
+    """
     ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
 
     async with await auth.get_prefect_cloud_client() as client:
@@ -191,14 +225,20 @@ async def deploy(
             )
 
 
-@app.command()
+@app.command(rich_help_panel="Deploy")
 async def run(
     deployment: str = typer.Argument(
         ...,
-        help="The deployment to run (either its name or ID).",
+        help="Name or ID of the deployment to run",
         autocompletion=completions.complete_deployment,
     ),
 ):
+    """
+    Run a deployment immediately
+
+    Examples:
+        $ prefect-cloud run flow_name/deployment_name
+    """
     ui_url, _, _ = await auth.get_cloud_urls_or_login()
     flow_run = await deployments.run(deployment)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
@@ -210,8 +250,47 @@ async def run(
     )
 
 
-@app.command()
+@app.command(rich_help_panel="Manage Deployments")
+async def schedule(
+    deployment: str = typer.Argument(
+        ...,
+        help="Name or ID of the deployment to schedule",
+        autocompletion=completions.complete_deployment,
+    ),
+    schedule: str = typer.Argument(
+        ...,
+        help="Cron schedule string or 'none' to unschedule",
+    ),
+    parameters: list[str] = typer.Option(
+        ...,
+        "--parameters",
+        "-p",
+        help="Flow Run parameters in NAME=VALUE format",
+        default_factory=list,
+    ),
+):
+    """
+    Set a deployment to run on a schedule
+
+    Examples:
+        Run daily at midnight:
+        $ prefect-cloud schedule flow_name/deployment_name "0 0 * * *"
+
+        Run every hour:
+        $ prefect-cloud schedule flow_name/deployment_name "0 * * * *"
+
+        Remove schedule:
+        $ prefect-cloud schedule flow_name/deployment_name none
+    """
+    parameters_dict = process_key_value_pairs(parameters) if parameters else {}
+    await deployments.schedule(deployment, schedule, parameters_dict)
+
+
+@app.command(rich_help_panel="Manage Deployments")
 async def ls():
+    """
+    List all deployments
+    """
     context = await deployments.list()
 
     table = Table(title="Deployments")
@@ -264,66 +343,76 @@ async def ls():
     )
 
 
-@app.command()
-async def schedule(
-    deployment: str = typer.Argument(
-        ...,
-        help="The deployment to schedule (either its name or ID).",
-        autocompletion=completions.complete_deployment,
-    ),
-    schedule: str = typer.Argument(
-        ...,
-        help="The schedule to set, as a cron string. Use 'none' to unschedule.",
-    ),
-    parameters: list[str] = typer.Option(
-        ...,
-        "--parameters",
-        "-p",
-        help="Parameters to set in the format NAME=VALUE. Can be specified multiple times.",
-        default_factory=list,
-    ),
-):
-    parameters_dict = process_key_value_pairs(parameters) if parameters else {}
-    await deployments.schedule(deployment, schedule, parameters_dict)
-
-
-@app.command()
+@app.command(rich_help_panel="Manage Deployments")
 async def pause(
     deployment: str = typer.Argument(
         ...,
-        help="The deployment to pause (either its name or ID).",
+        help="Name or ID of the deployment to pause",
         autocompletion=completions.complete_deployment,
     ),
 ):
+    """
+    Pause a scheduled deployment
+    """
     await deployments.pause(deployment)
 
 
-@app.command()
+@app.command(rich_help_panel="Manage Deployments")
 async def resume(
     deployment: str = typer.Argument(
         ...,
-        help="The deployment to resume (either its name or ID).",
+        help="Name or ID of the deployment to resume",
         autocompletion=completions.complete_deployment,
     ),
 ):
+    """
+    Resume a paused deployment
+    """
     await deployments.resume(deployment)
 
 
-@app.command()
+@app.command(rich_help_panel="Auth")
 async def login(
-    key: str = typer.Option(None, "--key", "-k"),
-    workspace: str = typer.Option(None, "--workspace", "-w"),
+    key: str = typer.Option(None, "--key", "-k", help="Prefect Cloud API key"),
+    workspace: str = typer.Option(
+        None, "--workspace", "-w", help="Workspace ID or slug"
+    ),
 ):
+    """
+    Log in to Prefect Cloud
+
+    Examples:
+        Interactive login:
+        $ prefect-cloud login
+
+        Login with API key:
+        $ prefect-cloud login --key your-api-key
+
+        Login to specific workspace:
+        $ prefect-cloud login --workspace your-workspace
+    """
     await auth.login(api_key=key, workspace_id_or_slug=workspace)
 
 
-@app.command()
+@app.command(rich_help_panel="Auth")
 def logout():
+    """
+    Log out of Prefect Cloud
+    """
     auth.logout()
 
 
-@app.command(aliases=["whoami", "me"])
-async def who_am_i() -> None:
+@app.command(rich_help_panel="Auth")
+async def whoami() -> None:
+    """
+    Show current user and workspace information
+
+    Displays:
+    • User details
+    • Current workspace
+    • API configuration
+    • Available accounts and workspaces
+    """
     ui_url, api_url, api_key = await auth.get_cloud_urls_or_login()
 
     me = await auth.me(api_key)

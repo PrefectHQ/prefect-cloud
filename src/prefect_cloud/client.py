@@ -577,9 +577,9 @@ class PrefectCloudClient(httpx.AsyncClient):
         response = await self.request(
             "POST",
             f"/deployments/{deployment_id}/schedules",
-            json=json,
+            json=[json],
         )
-        return DeploymentSchedule.model_validate(response.json())
+        return validate_list(DeploymentSchedule, response.json())[0]
 
     async def read_deployment_schedules(
         self,
