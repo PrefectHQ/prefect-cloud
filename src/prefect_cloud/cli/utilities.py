@@ -42,17 +42,32 @@ def with_cli_exception_handling(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-def process_key_value_pairs(env: list[str]) -> dict[str, str]:
+def process_key_value_pairs(
+    env: list[str] | None, progress: Progress | None = None
+) -> dict[str, str]:
+    if not env:
+        return {}
+
     invalid_pairs: list[str] = []
+    result = {}
 
     for e in env:
-        if "=" not in e:
+        parts = e.split("=", 1)
+        if len(parts) != 2:
             invalid_pairs.append(e)
+            continue
+
+        key, value = parts
+        if not key or not value:
+            invalid_pairs.append(e)
+            continue
+
+        result[key.strip()] = value.strip()
 
     if invalid_pairs:
-        raise ValueError(f"Invalid key value pairs: {invalid_pairs}")
+        exit_with_error(f"Invalid key value pairs: {invalid_pairs}", progress)
 
-    return {k: v for k, v in [e.split("=") for e in env]}
+    return result
 
 
 class PrefectCloudTyper(typer.Typer):
