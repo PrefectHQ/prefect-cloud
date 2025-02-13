@@ -38,7 +38,9 @@ app = PrefectCloudTyper(
 @app.command(rich_help_panel="Deploy")
 async def deploy(
     function: str = typer.Argument(
-        help="The python function to deploy.", rich_help_panel="Function"
+        help="The python function to deploy.",
+        rich_help_panel="Function",
+        show_default=False,
     ),
     file: str = typer.Option(
         ...,
