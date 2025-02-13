@@ -26,7 +26,7 @@ from prefect_cloud.schemas.objects import (
     IntervalSchedule,
     RRuleSchedule,
 )
-from prefect_cloud.utilities.flows import get_parameter_schema_from_content
+from prefect_cloud.utilities.callables import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
 from prefect_cloud.utilities.blocks import safe_block_name
 
