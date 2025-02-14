@@ -79,8 +79,6 @@ class GitHubRepo:
             ValueError: If the file can't be accessed
         """
         api_url = f"https://api.github.com/repos/{self.owner}/{self.repo}/contents/{filepath}?ref={self.ref}"
-        print(api_url)
-
         headers: dict[str, str] = {
             "Accept": "application/vnd.github.v3.raw",
         }
