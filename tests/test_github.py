@@ -165,6 +165,7 @@ class TestGitHubContent:
         pull_step = github_ref.to_pull_step()
         assert pull_step == {
             "prefect.deployments.steps.git_clone": {
+                "id": "git-clone",
                 "repository": "https://github.com/PrefectHQ/prefect.git",
                 "branch": "main",
             }
@@ -181,6 +182,7 @@ class TestGitHubContent:
         pull_step = github_ref.to_pull_step(credentials_block="test-creds")
         assert pull_step == {
             "prefect.deployments.steps.git_clone": {
+                "id": "git-clone",
                 "repository": "https://github.com/PrefectHQ/prefect.git",
                 "branch": "main",
                 "access_token": "{{ prefect.blocks.secret.test-creds }}",
