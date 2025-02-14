@@ -33,7 +33,7 @@ prefect-cloud login
 Deploy any Python function from a GitHub repository. For example:
 
 ```python
-# https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py
+# https://github.com/ExampleOwner/example-repo-cloud/blob/main/examples/hello.py
 
 def hello_world():
     print("Hello, World!")

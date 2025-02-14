@@ -19,7 +19,7 @@ def test_safe_block_name():
 
     # Test real world GitHub examples
     assert (
-        safe_block_name("PrefectHQ/prefect-cloud-credentials")
+        safe_block_name("ExampleOwner/example-repo-cloud-credentials")
         == "prefecthq-prefect-cloud-credentials"
     )
     assert (
