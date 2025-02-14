@@ -40,35 +40,39 @@ def hello_world():
 ```
 
 Deploy and run it using:
+```
+prefect-cloud deploy <path/to/file.py:function_name> --from <source URL> --run
+```
+e.g.
 ```bash
-prefect-cloud deploy hello_world --from https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py --run
+prefect-cloud deploy examples/hello.py:hello_world --from https://github.com/PrefectHQ/prefect-cloud/ --run
 ```
 
 ### Options
 **Only Deploy**
 ```bash
-prefect-cloud deploy ...
+prefect-cloud deploy ... --from ...
 ```
 
 **Deploy and Run**
 ```bash
-prefect-cloud deploy ... --run --parameters name=value
+prefect-cloud deploy ... --from ... --run --parameters name=value
 ```
 
 **Dependencies**
 
 ```bash
 # Package names
-prefect-cloud deploy ... --with pandas --with numpy
+prefect-cloud deploy ... --from ... --with pandas --with numpy
 
 # Or from files
-prefect-cloud deploy ... --with requirements.txt
-prefect-cloud deploy ... --with pyproject.toml
+prefect-cloud deploy ... --from ... --with requirements.txt
+prefect-cloud deploy ... --from ... --with pyproject.toml
 ```
 
 **Environment Variables**
 ```bash
-prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
+prefect-cloud deploy ... --from ... --env KEY=VALUE --env KEY2=VALUE2
 ```
 
 **Private Repositories**
