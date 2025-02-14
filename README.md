@@ -85,6 +85,6 @@ prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
 
 **From a Private Repository**
 ```bash
-prefect-cloud deploy ... https://github.com/myorg/private-repo/blob/main/flows.py --credentials GITHUB_TOKEN
+prefect-cloud deploy ... --from <private source repo URL> --credentials GITHUB_TOKEN
 ```
 
