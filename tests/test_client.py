@@ -197,32 +197,6 @@ async def test_create_deployment_schedule(
     assert result.schedule == schedule
 
 
-async def test_pause_deployment(
-    client: PrefectCloudClient,
-    mock_deployment: DeploymentResponse,
-    respx_mock: respx.Router,
-):
-    schedule = DeploymentSchedule(
-        id=uuid4(),
-        deployment_id=mock_deployment.id,
-        schedule=CronSchedule(cron="0 0 * * *", timezone="UTC"),
-        active=True,
-    )
-    mock_deployment.schedules = [schedule]
-
-    respx_mock.get(f"{PREFECT_API_URL}/deployments/{mock_deployment.id}").mock(
-        return_value=Response(200, json=mock_deployment.model_dump(mode="json"))
-    )
-    patch_route = respx_mock.patch(
-        f"{PREFECT_API_URL}/deployments/{mock_deployment.id}/schedules/{schedule.id}"
-    ).mock(return_value=Response(204))
-
-    await client.pause_deployment(mock_deployment.id)
-
-    assert patch_route.called
-    assert patch_route.calls.last.request.content == b'{"active":false}'
-
-
 async def test_get_default_base_job_template_for_managed_work_pool(
     client: PrefectCloudClient,
     respx_mock: respx.Router,

@@ -183,6 +183,15 @@ class PrefectCloudClient(httpx.AsyncClient):
 
         return UUID(deployment_id)
 
+    async def delete_deployment(self, deployment_id: "UUID"):
+        try:
+            await self.request("DELETE", f"/deployments/{deployment_id}")
+        except HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise ObjectNotFound(http_exc=e) from e
+            else:
+                raise
+
     async def create_block_document(
         self,
         block_document: "BlockDocument | BlockDocumentCreate",
@@ -798,22 +807,6 @@ class PrefectCloudClient(httpx.AsyncClient):
                     block_type_id=secret_block_type.id,
                     block_schema_id=secret_block_schema.id,
                 )
-            )
-
-    async def pause_deployment(self, deployment_id: UUID):
-        deployment = await self.read_deployment(deployment_id)
-
-        for schedule in deployment.schedules:
-            await self.update_deployment_schedule_active(
-                deployment.id, schedule.id, active=False
-            )
-
-    async def resume_deployment(self, deployment_id: UUID):
-        deployment = await self.read_deployment(deployment_id)
-
-        for schedule in deployment.schedules:
-            await self.update_deployment_schedule_active(
-                deployment.id, schedule.id, active=True
             )
 
     async def get_default_base_job_template_for_managed_work_pool(

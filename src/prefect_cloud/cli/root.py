@@ -256,7 +256,7 @@ async def run(
     )
 
 
-@app.command(rich_help_panel="Manage Deployments")
+@app.command(rich_help_panel="Deploy")
 async def schedule(
     deployment: str = typer.Argument(
         ...,
@@ -292,7 +292,20 @@ async def schedule(
     await deployments.schedule(deployment, schedule, func_kwargs)
 
 
-@app.command(rich_help_panel="Manage Deployments")
+@app.command(rich_help_panel="Deploy")
+async def unschedule(
+    deployment: str = typer.Argument(
+        ...,
+        help="Name or ID of the deployment to remove schedules from",
+    ),
+):
+    """
+    Remove deployment schedules
+    """
+    await deployments.schedule(deployment, "none")
+
+
+@app.command(rich_help_panel="Deploy")
 async def ls():
     """
     List all deployments
@@ -349,32 +362,18 @@ async def ls():
     )
 
 
-@app.command(rich_help_panel="Manage Deployments")
-async def pause(
+@app.command(rich_help_panel="Deploy")
+async def delete(
     deployment: str = typer.Argument(
         ...,
-        help="Name or ID of the deployment to pause",
+        help="Name or ID of the deployment to delete",
         autocompletion=completions.complete_deployment,
     ),
 ):
     """
-    Pause a scheduled deployment
+    Delete a deployment
     """
-    await deployments.pause(deployment)
-
-
-@app.command(rich_help_panel="Manage Deployments")
-async def resume(
-    deployment: str = typer.Argument(
-        ...,
-        help="Name or ID of the deployment to resume",
-        autocompletion=completions.complete_deployment,
-    ),
-):
-    """
-    Resume a paused deployment
-    """
-    await deployments.resume(deployment)
+    await deployments.delete(deployment)
 
 
 @app.command(rich_help_panel="Auth")
