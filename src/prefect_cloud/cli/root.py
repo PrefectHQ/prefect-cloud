@@ -16,9 +16,7 @@ from prefect_cloud.cli.utilities import (
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import (
     FileNotFound,
-    GitHubFileRef,
-    get_github_raw_content,
-    to_pull_step,
+    GitHubRepo,
 )
 from prefect_cloud.schemas.objects import (
     CronSchedule,
@@ -40,17 +38,19 @@ app = PrefectCloudTyper(
 @app.command(rich_help_panel="Deploy")
 async def deploy(
     function: str = typer.Argument(
-        help="The Python function to deploy as a flow",
+        help="The path to the Python function to deploy (format: path/to/file.py:function_name)",
         rich_help_panel="Arguments",
         show_default=False,
     ),
-    file: str = typer.Option(
+    repo: str = typer.Option(
         ...,
         "--from",
         "-f",
         help=(
-            "Source file containing the function to deploy. Supports:\n\n"
-            "• GitHub: e.g. github.com/owner/repo/blob/ref/path/to/file\n"
+            "GitHub repository URL. Supports:\n\n"
+            "• Repo: github.com/owner/repo\n\n"
+            "• Specific branch: github.com/owner/repo/tree/branch\n\n"
+            "• Specific commit: github.com/owner/repo/tree/<commit-sha>\n\n"
         ),
         rich_help_panel="Source",
         show_default=False,
@@ -108,15 +108,22 @@ async def deploy(
 
     Examples:
         Deploy a function:
-        $ prefect-cloud deploy my_function --from github.com/owner/repo/blob/main/flow.py
+        $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo
+
+        Deploy from specific branch:
+        $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo/tree/dev
 
         Deploy and run immediately:
-        $ prefect-cloud deploy my_function -f github.com/owner/repo/blob/main/flow.py --run
-
-        Deploy with dependencies:
-        $ prefect-cloud deploy my_function -f github.com/owner/repo/blob/main/flow.py --with prefect --with pandas
+        $ prefect-cloud deploy flows/hello.py:my_function -f github.com/owner/repo --run
     """
     ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
+
+    # Split function_path into file path and function name
+    try:
+        filepath, function = function.split(":")
+        filepath = filepath.lstrip("/")
+    except ValueError:
+        exit_with_error("Invalid function. Expected path/to/file.py:function_name")
 
     async with await auth.get_prefect_cloud_client() as client:
         with Progress(
@@ -131,11 +138,10 @@ async def deploy(
             env_vars = process_key_value_pairs(env, progress=progress)
             func_kwargs = process_key_value_pairs(parameters, progress=progress)
 
-            # Get code contents
-            github_ref = GitHubFileRef.from_url(file)
-            raw_contents: str | None = None
+            # Get repository info and file contents
+            github_ref = GitHubRepo.from_url(repo)
             try:
-                raw_contents = await get_github_raw_content(github_ref, credentials)
+                raw_contents = await github_ref.get_file_contents(filepath, credentials)
             except FileNotFound:
                 exit_with_error(
                     "Unable to access file in Github. "
@@ -149,7 +155,7 @@ async def deploy(
                 )
             except ValueError:
                 exit_with_error(
-                    f"Could not find function '{function}' in {github_ref.filepath}",
+                    f"Could not find function '{function}' in {filepath}",
                     progress=progress,
                 )
 
@@ -164,18 +170,16 @@ async def deploy(
                 )
                 await client.create_credentials_secret(credentials_name, credentials)
 
-            pull_steps = [to_pull_step(github_ref, credentials_name)]
-
             progress.update(task, description="Deploying code...")
 
             deployment_name = f"{function}"
             deployment_id = await client.create_managed_deployment(
-                deployment_name,
-                github_ref.filepath,
-                function,
-                work_pool,
-                pull_steps,
-                parameter_schema,
+                deployment_name=deployment_name,
+                filepath=filepath,
+                function=function,
+                work_pool_name=work_pool,
+                pull_steps=[github_ref.to_pull_step(credentials_name)],
+                parameter_schema=parameter_schema,
                 job_variables={
                     "pip_packages": pip_packages,
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
