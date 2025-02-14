@@ -41,7 +41,7 @@ def hello_world():
 
 Deploy and run it using:
 ```
-prefect-cloud deploy <path/to/file.py:function_name> --from <source URL> --run
+prefect-cloud deploy <path/to/file.py:function_name> --from <source repo URL> --run
 ```
 e.g.
 ```bash
