@@ -48,9 +48,9 @@ async def deploy(
         "-f",
         help=(
             "GitHub repository URL. Supports:\n\n"
-            "• Repo: https://github.com/owner/repo\n"
-            "• Specific branch: https://github.com/owner/repo/tree/branch\n"
-            "• Specific commit: https://github.com/owner/repo/tree/<commit-sha>\n"
+            "• Repo: github.com/owner/repo\n\n"
+            "• Specific branch: github.com/owner/repo/tree/branch\n\n"
+            "• Specific commit: github.com/owner/repo/tree/<commit-sha>\n\n"
         ),
         rich_help_panel="Source",
         show_default=False,
