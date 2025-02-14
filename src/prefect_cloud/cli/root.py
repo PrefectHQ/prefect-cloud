@@ -16,9 +16,7 @@ from prefect_cloud.cli.utilities import (
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import (
     FileNotFound,
-    GitHubFileRef,
-    get_github_raw_content,
-    to_pull_step,
+    GitHubRepo,
 )
 from prefect_cloud.schemas.objects import (
     CronSchedule,
@@ -40,17 +38,18 @@ app = PrefectCloudTyper(
 @app.command(rich_help_panel="Deploy")
 async def deploy(
     function: str = typer.Argument(
-        help="The Python function to deploy as a flow",
-        rich_help_panel="Arguments",
+        help="The path to the Python function to deploy in <path/to/file.py:function_name> format",
         show_default=False,
     ),
-    file: str = typer.Option(
+    repo: str = typer.Option(
         ...,
         "--from",
         "-f",
         help=(
-            "Source file containing the function to deploy. Supports:\n\n"
-            "• GitHub: e.g. github.com/owner/repo/blob/ref/path/to/file\n"
+            "GitHub repository URL. e.g.\n\n"
+            "• Repo: github.com/owner/repo\n\n"
+            "• Specific branch: github.com/owner/repo/tree/<branch>\n\n"
+            "• Specific commit: github.com/owner/repo/tree/<commit-sha>\n\n"
         ),
         rich_help_panel="Source",
         show_default=False,
@@ -67,56 +66,68 @@ async def deploy(
         ...,
         "--with",
         "-d",
-        help=(
-            "Python dependencies to include:\n"
-            "• Single package: --with prefect\n"
-            "• Multiple packages: --with prefect --with pandas\n"
-            "• From file: --with requirements.txt or --with pyproject.toml"
-        ),
+        help=("Python dependencies to include (can be used multiple times)"),
         default_factory=list,
-        rich_help_panel="Configuration",
+        rich_help_panel="Dependencies",
+        show_default=False,
+    ),
+    with_requirements: str | None = typer.Option(
+        None,
+        "--with-requirements",
+        help="Path to repository's requirements file",
+        rich_help_panel="Dependencies",
         show_default=False,
     ),
     env: list[str] = typer.Option(
         ...,
         "--env",
         "-e",
-        help="Environment variables in KEY=VALUE format",
+        help="Environment variables in <KEY=VALUE> format (can be used multiple times)",
         default_factory=list,
         rich_help_panel="Configuration",
         show_default=False,
     ),
     parameters: list[str] = typer.Option(
         ...,
-        "--parameters",
+        "--parameter",
         "-p",
-        help="Flow Run parameters in NAME=VALUE format (only used with --run)",
+        help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
         default_factory=list,
-        rich_help_panel="Execution",
+        rich_help_panel="Run",
         show_default=False,
     ),
     run: bool = typer.Option(
         False,
         "--run",
         "-r",
-        help="Run the deployment immediately after creation",
-        rich_help_panel="Execution",
+        help="Run immediately after creation",
+        rich_help_panel="Run",
     ),
 ):
     """
-    Deploy a Python function as a Prefect flow
+    Deploy a Python function to Prefect Cloud
 
     Examples:
-        Deploy a function:
-        $ prefect-cloud deploy my_function --from github.com/owner/repo/blob/main/flow.py
 
-        Deploy and run immediately:
-        $ prefect-cloud deploy my_function -f github.com/owner/repo/blob/main/flow.py --run
+    Deploy a function:
+    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo
 
-        Deploy with dependencies:
-        $ prefect-cloud deploy my_function -f github.com/owner/repo/blob/main/flow.py --with prefect --with pandas
+    Deploy with a requirements file:
+    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --with-requirements requirements.txt
+
+    Deploy and run immediately:
+    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --run
+
+
     """
     ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
+
+    # Split function_path into file path and function name
+    try:
+        filepath, function = function.split(":")
+        filepath = filepath.lstrip("/")
+    except ValueError:
+        exit_with_error("Invalid function. Expected path/to/file.py:function_name")
 
     async with await auth.get_prefect_cloud_client() as client:
         with Progress(
@@ -129,13 +140,14 @@ async def deploy(
             # Pre-process CLI arguments
             pip_packages = get_dependencies(dependencies)
             env_vars = process_key_value_pairs(env, progress=progress)
-            func_kwargs = process_key_value_pairs(parameters, progress=progress)
+            func_kwargs = process_key_value_pairs(
+                parameters, progress=progress, as_json=True
+            )
 
-            # Get code contents
-            github_ref = GitHubFileRef.from_url(file)
-            raw_contents: str | None = None
+            # Get repository info and file contents
+            github_ref = GitHubRepo.from_url(repo)
             try:
-                raw_contents = await get_github_raw_content(github_ref, credentials)
+                raw_contents = await github_ref.get_file_contents(filepath, credentials)
             except FileNotFound:
                 exit_with_error(
                     "Unable to access file in Github. "
@@ -149,7 +161,7 @@ async def deploy(
                 )
             except ValueError:
                 exit_with_error(
-                    f"Could not find function '{function}' in {github_ref.filepath}",
+                    f"Could not find function '{function}' in {filepath}",
                     progress=progress,
                 )
 
@@ -164,18 +176,27 @@ async def deploy(
                 )
                 await client.create_credentials_secret(credentials_name, credentials)
 
-            pull_steps = [to_pull_step(github_ref, credentials_name)]
-
             progress.update(task, description="Deploying code...")
+
+            pull_steps = [github_ref.to_pull_step(credentials_name)]
+            if with_requirements:
+                pull_steps.append(
+                    {
+                        "prefect.deployments.steps.run_shell_script": {
+                            "directory": "{{ git-clone.directory }}",
+                            "script": f"uv pip install -r {with_requirements}",
+                        }
+                    }
+                )
 
             deployment_name = f"{function}"
             deployment_id = await client.create_managed_deployment(
-                deployment_name,
-                github_ref.filepath,
-                function,
-                work_pool,
-                pull_steps,
-                parameter_schema,
+                deployment_name=deployment_name,
+                filepath=filepath,
+                function=function,
+                work_pool_name=work_pool,
+                pull_steps=pull_steps,
+                parameter_schema=parameter_schema,
                 job_variables={
                     "pip_packages": pip_packages,
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
@@ -235,7 +256,7 @@ async def run(
     )
 
 
-@app.command(rich_help_panel="Manage Deployments")
+@app.command(rich_help_panel="Deploy")
 async def schedule(
     deployment: str = typer.Argument(
         ...,
@@ -248,9 +269,9 @@ async def schedule(
     ),
     parameters: list[str] = typer.Option(
         ...,
-        "--parameters",
+        "--parameter",
         "-p",
-        help="Flow Run parameters in NAME=VALUE format",
+        help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
         default_factory=list,
     ),
 ):
@@ -267,13 +288,12 @@ async def schedule(
         Remove schedule:
         $ prefect-cloud schedule flow_name/deployment_name none
     """
+    func_kwargs = process_key_value_pairs(parameters, as_json=True)
+    await deployments.schedule(deployment, schedule, func_kwargs)
 
-    parameters_dict = process_key_value_pairs(parameters) if parameters else {}
-    await deployments.schedule(deployment, schedule, parameters_dict)
 
-
-@app.command(rich_help_panel="Manage Deployments")
-async def deschedule(
+@app.command(rich_help_panel="Deploy")
+async def unschedule(
     deployment: str = typer.Argument(
         ...,
         help="Name or ID of the deployment to remove schedules from",
@@ -285,7 +305,7 @@ async def deschedule(
     await deployments.schedule(deployment, "none")
 
 
-@app.command(rich_help_panel="Manage Deployments")
+@app.command(rich_help_panel="Deploy")
 async def ls():
     """
     List all deployments
@@ -342,7 +362,7 @@ async def ls():
     )
 
 
-@app.command(rich_help_panel="Manage Deployments")
+@app.command(rich_help_panel="Deploy")
 async def delete(
     deployment: str = typer.Argument(
         ...,

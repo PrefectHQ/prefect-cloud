@@ -1,195 +1,146 @@
 import pytest
 from httpx import Response
 
-from prefect_cloud.github import FileNotFound, GitHubFileRef, get_github_raw_content
+from prefect_cloud.github import FileNotFound, GitHubRepo
 
 
-class TestGitHubFileRef:
-    def test_from_url_blob(self):
-        url = "https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/root.py"
-        ref = GitHubFileRef.from_url(url)
+class TestGitHubRepo:
+    def test_from_url_basic(self):
+        """Test basic repo URL without branch."""
+        url = "https://github.com/ExampleOwner/example-repo"
+        ref = GitHubRepo.from_url(url)
 
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"
+        assert ref.ref == "main"  # Default branch
+
+    def test_from_url_with_branch(self):
+        """Test repo URL with specific branch."""
+        url = "github.com/ExampleOwner/example-repo/tree/dev"
+        ref = GitHubRepo.from_url(url)
+
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"
+        assert ref.ref == "dev"
+
+    def test_from_url_with_commit(self):
+        """Test repo URL with commit SHA."""
+        url = "github.com/ExampleOwner/example-repo/tree/a1b2c3d4e5f6"
+        ref = GitHubRepo.from_url(url)
+
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"
+        assert ref.ref == "a1b2c3d4e5f6"
+
+    def test_from_url_with_git_extension(self):
+        """Test repo URL with .git extension."""
+        url = "github.com/ExampleOwner/example-repo.git"
+        ref = GitHubRepo.from_url(url)
+
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"  # .git is stripped
         assert ref.ref == "main"
-        assert ref.filepath == "src/prefect/cli/root.py"
-        assert ref.ref_type == "blob"
-
-    def test_from_url_tree(self):
-        url = "https://github.com/PrefectHQ/prefect/tree/main/src/prefect/cli"
-        ref = GitHubFileRef.from_url(url)
-
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
-        assert ref.ref == "main"
-        assert ref.filepath == "src/prefect/cli"
-        assert ref.ref_type == "tree"
-
-    def test_from_url_invalid_github(self):
-        with pytest.raises(ValueError, match="Not a GitHub URL"):
-            GitHubFileRef.from_url("https://gitlab.com/owner/repo/blob/main/file.py")
-
-    def test_from_url_invalid_format(self):
-        with pytest.raises(ValueError, match="Invalid GitHub URL"):
-            GitHubFileRef.from_url("https://github.com/owner/repo")
-
-    def test_from_url_invalid_ref_type(self):
-        with pytest.raises(ValueError, match="Invalid reference type"):
-            GitHubFileRef.from_url("https://github.com/owner/repo/invalid/main/file.py")
-
-    def test_clone_url(self):
-        ref = GitHubFileRef(
-            owner="PrefectHQ",
-            repo="prefect",
-            ref="main",
-            filepath="README.md",
-            ref_type="blob",
-        )
-        assert ref.clone_url == "https://github.com/PrefectHQ/prefect.git"
-
-    def test_directory(self):
-        ref = GitHubFileRef(
-            owner="PrefectHQ",
-            repo="prefect",
-            ref="main",
-            filepath="src/prefect/cli/root.py",
-            ref_type="blob",
-        )
-        assert ref.directory == "src/prefect/cli"
-
-    def test_api_url(self):
-        ref = GitHubFileRef(
-            owner="PrefectHQ",
-            repo="prefect",
-            ref="main",
-            filepath="README.md",
-            ref_type="blob",
-        )
-        assert (
-            ref.api_url
-            == "https://api.github.com/repos/PrefectHQ/prefect/contents/README.md?ref=main"
-        )
-
-    def test_str_representation(self):
-        ref = GitHubFileRef(
-            owner="PrefectHQ",
-            repo="prefect",
-            ref="main",
-            filepath="README.md",
-            ref_type="blob",
-        )
-        assert str(ref) == "github.com/PrefectHQ/prefect @ main - README.md"
 
     def test_from_url_without_protocol(self):
-        url = "github.com/PrefectHQ/prefect/blob/main/README.md"
-        ref = GitHubFileRef.from_url(url)
+        """Test URL without https://."""
+        url = "github.com/ExampleOwner/example-repo"
+        ref = GitHubRepo.from_url(url)
 
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"
         assert ref.ref == "main"
-        assert ref.filepath == "README.md"
-        assert ref.ref_type == "blob"
 
     def test_from_url_with_http(self):
-        url = "http://github.com/PrefectHQ/prefect/blob/main/README.md"
-        ref = GitHubFileRef.from_url(url)
+        """Test URL with http:// instead of https://."""
+        url = "http://github.com/ExampleOwner/example-repo"
+        ref = GitHubRepo.from_url(url)
 
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"
         assert ref.ref == "main"
-        assert ref.filepath == "README.md"
-        assert ref.ref_type == "blob"
 
-    def test_from_url_requires_github_domain(self):
-        with pytest.raises(ValueError, match="Must include 'github.com' in the URL"):
-            GitHubFileRef.from_url("PrefectHQ/prefect/blob/main/README.md")
+    def test_from_url_invalid_github(self):
+        """Test that non-GitHub URLs are rejected."""
+        with pytest.raises(ValueError, match="Not a GitHub URL"):
+            GitHubRepo.from_url("https://gitlab.com/owner/repo")
 
-    def test_from_url_with_multiple_path_segments(self):
-        url = "github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/root.py"
-        ref = GitHubFileRef.from_url(url)
+    def test_from_url_invalid_format(self):
+        """Test that URLs without owner/repo are rejected."""
+        with pytest.raises(ValueError, match="Must include owner and repository"):
+            GitHubRepo.from_url("https://github.com/owner")
 
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
-        assert ref.ref == "main"
-        assert ref.filepath == "src/prefect/cli/root.py"
-        assert ref.ref_type == "blob"
+    def test_from_url_rejects_file_urls(self):
+        """Test that GitHub file URLs are rejected."""
+        file_urls = [
+            "https://github.com/ExampleOwner/example-repo/blob/main/README.md",
+            "github.com/ExampleOwner/example-repo/blob/main/src/prefect/__init__.py",
+            "https://github.com/ExampleOwner/example-repo/raw/main/requirements.txt",
+        ]
 
-    def test_from_url_with_commit_sha(self):
-        url = "github.com/PrefectHQ/prefect/blob/a1b2c3d4e5f6/src/prefect/cli/root.py"
-        ref = GitHubFileRef.from_url(url)
+        for url in file_urls:
+            with pytest.raises(
+                ValueError, match="URL appears to point to a specific file"
+            ):
+                GitHubRepo.from_url(url)
 
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
-        assert ref.ref == "a1b2c3d4e5f6"
-        assert ref.filepath == "src/prefect/cli/root.py"
-        assert ref.ref_type == "blob"
+    def test_clone_url(self):
+        """Test generation of clone URL."""
+        ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
+            ref="main",
+        )
+        assert ref.clone_url == "https://github.com/ExampleOwner/example-repo.git"
 
-    def test_from_url_with_short_commit_sha(self):
-        url = "github.com/PrefectHQ/prefect/blob/a1b2c3d/README.md"
-        ref = GitHubFileRef.from_url(url)
-
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
-        assert ref.ref == "a1b2c3d"
-        assert ref.filepath == "README.md"
-        assert ref.ref_type == "blob"
-
-    def test_from_url_without_ref(self):
-        url = "github.com/PrefectHQ/prefect/blob/README.md"
-        with pytest.raises(
-            ValueError,
-            match="Invalid GitHub URL. Expected format: https://github.com/owner/repo/blob|tree/ref/path/to/file.py",
-        ):
-            GitHubFileRef.from_url(url)
-
-    def test_from_url_with_tree_without_ref(self):
-        url = "github.com/PrefectHQ/prefect/tree/main/src/prefect"
-        ref = GitHubFileRef.from_url(url)
-
-        assert ref.owner == "PrefectHQ"
-        assert ref.repo == "prefect"
-        assert ref.ref == "main"
-        assert ref.filepath == "src/prefect"
-        assert ref.ref_type == "tree"
+    def test_str_representation(self):
+        """Test string representation of repo reference."""
+        ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
+            ref="main",
+        )
+        assert str(ref) == "github.com/ExampleOwner/example-repo @ main"
 
 
 class TestGitHubContent:
     @pytest.mark.asyncio
-    async def test_get_github_raw_content(self, respx_mock):
-        github_ref = GitHubFileRef(
-            owner="PrefectHQ",
-            repo="prefect",
+    async def test_get_file_contents(self, respx_mock):
+        """Test getting file contents from repo."""
+        github_ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
             ref="main",
-            filepath="README.md",
-            ref_type="blob",
         )
 
         expected_content = "# Test Content"
-        respx_mock.get(github_ref.api_url).mock(
+        api_url = "https://api.github.com/repos/ExampleOwner/example-repo/contents/README.md?ref=main"
+        respx_mock.get(api_url).mock(
             return_value=Response(status_code=200, text=expected_content)
         )
 
-        content = await get_github_raw_content(github_ref)
+        content = await github_ref.get_file_contents("README.md")
         assert content == expected_content
 
     @pytest.mark.asyncio
-    async def test_get_github_raw_content_with_credentials(self, respx_mock):
-        github_ref = GitHubFileRef(
-            owner="PrefectHQ",
-            repo="prefect",
+    async def test_get_file_contents_with_credentials(self, respx_mock):
+        """Test getting file contents with authentication."""
+        github_ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
             ref="main",
-            filepath="README.md",
-            ref_type="blob",
         )
 
         test_token = "test-token"
         expected_content = "# Test Content"
+        api_url = "https://api.github.com/repos/ExampleOwner/example-repo/contents/README.md?ref=main"
 
-        mock = respx_mock.get(github_ref.api_url).mock(
+        mock = respx_mock.get(api_url).mock(
             return_value=Response(status_code=200, text=expected_content)
         )
 
-        content = await get_github_raw_content(github_ref, credentials=test_token)
+        content = await github_ref.get_file_contents(
+            "README.md", credentials=test_token
+        )
         assert content == expected_content
 
         # Verify authorization header was sent
@@ -199,16 +150,51 @@ class TestGitHubContent:
         )
 
     @pytest.mark.asyncio
-    async def test_get_github_raw_content_file_not_found(self, respx_mock):
-        github_ref = GitHubFileRef(
-            owner="PrefectHQ",
-            repo="prefect",
+    async def test_get_file_contents_not_found(self, respx_mock):
+        """Test handling of non-existent files."""
+        github_ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
             ref="main",
-            filepath="NONEXISTENT.md",
-            ref_type="blob",
         )
 
-        respx_mock.get(github_ref.api_url).mock(return_value=Response(status_code=404))
+        api_url = "https://api.github.com/repos/ExampleOwner/example-repo/contents/NONEXISTENT.md?ref=main"
+        respx_mock.get(api_url).mock(return_value=Response(status_code=404))
 
-        with pytest.raises(FileNotFound):
-            await get_github_raw_content(github_ref)
+        with pytest.raises(FileNotFound, match="File not found: NONEXISTENT.md in"):
+            await github_ref.get_file_contents("NONEXISTENT.md")
+
+    def test_to_pull_step(self):
+        """Test generation of pull step configuration."""
+        github_ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
+            ref="main",
+        )
+
+        pull_step = github_ref.to_pull_step()
+        assert pull_step == {
+            "prefect.deployments.steps.git_clone": {
+                "id": "git-clone",
+                "repository": "https://github.com/ExampleOwner/example-repo.git",
+                "branch": "main",
+            }
+        }
+
+    def test_to_pull_step_with_credentials(self):
+        """Test generation of pull step with credentials."""
+        github_ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
+            ref="main",
+        )
+
+        pull_step = github_ref.to_pull_step(credentials_block="test-creds")
+        assert pull_step == {
+            "prefect.deployments.steps.git_clone": {
+                "id": "git-clone",
+                "repository": "https://github.com/ExampleOwner/example-repo.git",
+                "branch": "main",
+                "access_token": "{{ prefect.blocks.secret.test-creds }}",
+            }
+        }

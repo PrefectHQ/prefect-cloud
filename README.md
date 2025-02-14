@@ -1,6 +1,6 @@
 # prefect-cloud
 
-:zap: Deploy your code on Prefect Cloud in seconds! :zap:
+:zap: Deploy your code to Prefect Cloud in seconds! :zap:
 
 Deploy and run your Python functions on Prefect Cloud with a single command.
 
@@ -33,42 +33,45 @@ prefect-cloud login
 Deploy any Python function from a GitHub repository. For example:
 
 ```python
-# https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py
+# https://github.com/ExampleOwner/example-repo-cloud/blob/main/examples/hello.py
 
 def hello_world():
     print("Hello, World!")
 ```
 
 Deploy and run it using:
+```
+prefect-cloud deploy <path/to/file.py:function_name> --from <source repo URL> --run
+```
+e.g.
 ```bash
-prefect-cloud deploy hello_world --from https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py --run
+prefect-cloud deploy examples/hello.py:hello_world --from https://github.com/PrefectHQ/prefect-cloud/ --run
 ```
 
 ### Options
 **Only Deploy**
 ```bash
-prefect-cloud deploy ...
+prefect-cloud deploy ... --from ...
 ```
 
 **Deploy and Run**
 ```bash
-prefect-cloud deploy ... --run --parameters name=value
+prefect-cloud deploy ... --from ... --run --parameter a=1 --parameter b=2 
 ```
 
 **Dependencies**
 
 ```bash
-# Package names
-prefect-cloud deploy ... --with pandas --with numpy
+# Add dependencies
+prefect-cloud deploy ... --from ... --with pandas --with numpy
 
-# Or from files
-prefect-cloud deploy ... --with requirements.txt
-prefect-cloud deploy ... --with pyproject.toml
+# Or install from requirements file at runtime
+prefect-cloud deploy ... --from ... --with-requirements </path/to/requirements.txt>
 ```
 
 **Environment Variables**
 ```bash
-prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
+prefect-cloud deploy ... --from ... --env KEY=VALUE --env KEY2=VALUE2
 ```
 
 **Private Repositories**

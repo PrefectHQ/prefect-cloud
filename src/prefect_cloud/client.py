@@ -757,18 +757,18 @@ class PrefectCloudClient(httpx.AsyncClient):
     async def create_managed_deployment(
         self,
         deployment_name: str,
-        filename: str,
-        flow_func: str,
+        filepath: str,
+        function: str,
         work_pool_name: str,
         pull_steps: list[dict[str, Any]],
         parameter_schema: ParameterSchema,
         job_variables: dict[str, Any] | None = None,
     ):
-        flow_id = await self.create_flow_from_name(flow_func)
+        flow_id = await self.create_flow_from_name(function)
 
         deployment_id = await self.create_deployment(
             flow_id=flow_id,
-            entrypoint=f"{filename}:{flow_func}",
+            entrypoint=f"{filepath}:{function}",
             name=deployment_name,
             work_pool_name=work_pool_name,
             pull_steps=pull_steps,
