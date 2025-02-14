@@ -508,3 +508,51 @@ def test_run():
 
                 # Verify the deployment was run
                 mock_run.assert_called_once_with("test_deployment")
+
+
+def test_deploy_with_requirements_file():
+    """Test deployment with a requirements file"""
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+        client = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = client
+
+        client.ensure_managed_work_pool = AsyncMock(return_value="test-pool")
+        client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
+
+        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
+            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
+
+            with patch(
+                "prefect_cloud.github.GitHubRepo.get_file_contents"
+            ) as mock_content:
+                mock_content.return_value = textwrap.dedent("""
+                    def test_function():
+                        pass
+                """).lstrip()
+
+                invoke_and_assert(
+                    command=[
+                        "deploy",
+                        "test.py:test_function",
+                        "--from",
+                        "github.com/owner/repo",
+                        "--with-requirements",
+                        "requirements.txt",
+                    ],
+                    expected_code=0,
+                    expected_output_contains=[
+                        "Deployed test_function! 🎉",
+                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
+                    ],
+                )
+
+                # Verify deployment was created with correct pull steps
+                client.create_managed_deployment.assert_called_once()
+                pull_steps = client.create_managed_deployment.call_args[1]["pull_steps"]
+                assert len(pull_steps) == 2
+                assert pull_steps[1] == {
+                    "prefect.deployments.steps.run_shell_script": {
+                        "directory": "{{ git-clone.directory }}",
+                        "script": "uv pip install -r requirements.txt",
+                    }
+                }

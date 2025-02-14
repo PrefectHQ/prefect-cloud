@@ -45,6 +45,13 @@ class GitHubRepo:
         """
         normalized_url = url if "://" in url else f"https://{url}"
 
+        # Check for GitHub file URLs (blob/raw paths)
+        if "/blob/" in normalized_url or "/raw/" in normalized_url:
+            raise ValueError(
+                "Invalid GitHub URL: URL appears to point to a specific file. "
+                "Must be a repository URL (e.g., github.com/owner/repo)"
+            )
+
         parsed = urlparse(normalized_url)
         if parsed.netloc != "github.com":
             raise ValueError("Not a GitHub URL. Must include 'github.com' in the URL")
@@ -94,6 +101,7 @@ class GitHubRepo:
 
     def to_pull_step(self, credentials_block: str | None = None) -> dict[str, Any]:
         pull_step_kwargs = {
+            "id": "git-clone",
             "repository": self.clone_url,
             "branch": self.ref,
         }

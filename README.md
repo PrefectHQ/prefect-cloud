@@ -1,6 +1,6 @@
 # prefect-cloud
 
-:zap: Deploy your code on Prefect Cloud in seconds! :zap:
+:zap: Deploy your code to Prefect Cloud in seconds! :zap:
 
 Deploy and run your Python functions on Prefect Cloud with a single command.
 
@@ -33,7 +33,7 @@ prefect-cloud login
 Deploy any Python function from a GitHub repository. For example:
 
 ```python
-# https://github.com/PrefectHQ/prefect-cloud/blob/main/examples/hello.py
+# https://github.com/ExampleOwner/example-repo-cloud/blob/main/examples/hello.py
 
 def hello_world():
     print("Hello, World!")
@@ -62,12 +62,11 @@ prefect-cloud deploy ... --from ... --run --parameter a=1 --parameter b=2
 **Dependencies**
 
 ```bash
-# Package names
+# Add dependencies
 prefect-cloud deploy ... --from ... --with pandas --with numpy
 
-# Or from files
-prefect-cloud deploy ... --from ... --with requirements.txt
-prefect-cloud deploy ... --from ... --with pyproject.toml
+# Or install from requirements file at runtime
+prefect-cloud deploy ... --from ... --with-requirements </path/to/requirements.txt>
 ```
 
 **Environment Variables**
