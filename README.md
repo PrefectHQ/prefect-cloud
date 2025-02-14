@@ -1,6 +1,6 @@
 # prefect-cloud
 
-:zap: Deploy your code on Prefect Cloud in seconds! :zap:
+:zap: Deploy your code to Prefect Cloud in seconds! :zap:
 
 Deploy and run your Python functions on Prefect Cloud with a single command.
 

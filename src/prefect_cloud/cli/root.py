@@ -105,17 +105,20 @@ async def deploy(
     ),
 ):
     """
-    Deploy a Python function as a Prefect flow
+    Deploy a Python function to Prefect Cloud
 
     Examples:
-        Deploy a function:
-        $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo
 
-        Deploy from specific branch:
-        $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo/tree/dev
+    Deploy a function:
+    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo
 
-        Deploy and run immediately:
-        $ prefect-cloud deploy flows/hello.py:my_function -f github.com/owner/repo --run
+    Deploy with a requirements file:
+    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --with-requirements requirements.txt
+
+    Deploy and run immediately:
+    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --run
+
+
     """
     ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
 
