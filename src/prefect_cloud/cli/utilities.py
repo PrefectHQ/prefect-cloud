@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 import asyncio
 import functools
 import inspect
+import json
 import traceback
 from typing import Any, Callable, NoReturn
 
@@ -43,26 +42,49 @@ def with_cli_exception_handling(fn: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def process_key_value_pairs(
-    env: list[str] | None, progress: Progress | None = None
-) -> dict[str, str]:
-    if not env:
+    pairs: list[str] | None,
+    progress: Progress | None = None,
+    as_json: bool = False,
+) -> dict[str, Any] | dict[str, str]:
+    """
+    Process a list of KEY=VALUE pairs into a dictionary.
+
+    Args:
+        pairs: List of strings in KEY=VALUE format
+        progress: Optional Progress object for status updates
+        as_json: If True, attempts to parse values as JSON
+
+    Returns:
+        Dictionary of processed key-value pairs. If as_json is True, values
+        may be any JSON-serializable type. Otherwise all values are strings.
+    """
+    if not pairs:
         return {}
 
     invalid_pairs: list[str] = []
     result = {}
 
-    for e in env:
-        parts = e.split("=", 1)
+    for pair in pairs:
+        parts = pair.split("=", 1)
         if len(parts) != 2:
-            invalid_pairs.append(e)
+            invalid_pairs.append(pair)
             continue
 
         key, value = parts
         if not key or not value:
-            invalid_pairs.append(e)
+            invalid_pairs.append(pair)
             continue
 
-        result[key.strip()] = value.strip()
+        key = key.strip()
+        value = value.strip()
+
+        if as_json:
+            try:
+                result[key] = json.loads(value)
+            except json.JSONDecodeError:
+                result[key] = value
+        else:
+            result[key] = value
 
     if invalid_pairs:
         exit_with_error(f"Invalid key value pairs: {invalid_pairs}", progress)
