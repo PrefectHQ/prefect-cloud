@@ -27,9 +27,9 @@ class GitHubRepo:
 
     @classmethod
     def from_url(cls, url: str) -> "GitHubRepo":
-        """Parse a GitHub URL into its components.
+        """Parse a GitHub repo URL into its components.
 
-        Handles various GitHub URL formats:
+        Handles various URL formats:
         - https://github.com/owner/repo
         - github.com/owner/repo/tree/branch
         - github.com/owner/repo/tree/a1b2c3d
@@ -38,7 +38,7 @@ class GitHubRepo:
             url: GitHub URL to parse
 
         Returns:
-            GitHubRef containing parsed components
+            GitHubRepo
 
         Raises:
             ValueError: If URL format is invalid
