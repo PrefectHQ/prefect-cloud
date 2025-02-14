@@ -89,9 +89,9 @@ async def deploy(
     ),
     parameters: list[str] = typer.Option(
         ...,
-        "--parameters",
+        "--parameter",
         "-p",
-        help="Function parameters in <NAME=VALUE> format (can be used multiple times)",
+        help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
         default_factory=list,
         rich_help_panel="Run",
         show_default=False,
@@ -140,7 +140,9 @@ async def deploy(
             # Pre-process CLI arguments
             pip_packages = get_dependencies(dependencies)
             env_vars = process_key_value_pairs(env, progress=progress)
-            func_kwargs = process_key_value_pairs(parameters, progress=progress)
+            func_kwargs = process_key_value_pairs(
+                parameters, progress=progress, as_json=True
+            )
 
             # Get repository info and file contents
             github_ref = GitHubRepo.from_url(repo)
@@ -267,9 +269,9 @@ async def schedule(
     ),
     parameters: list[str] = typer.Option(
         ...,
-        "--parameters",
+        "--parameter",
         "-p",
-        help="Flow Run parameters in NAME=VALUE format",
+        help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
         default_factory=list,
     ),
 ):
@@ -286,8 +288,8 @@ async def schedule(
         Remove schedule:
         $ prefect-cloud schedule flow_name/deployment_name none
     """
-    parameters_dict = process_key_value_pairs(parameters) if parameters else {}
-    await deployments.schedule(deployment, schedule, parameters_dict)
+    func_kwargs = process_key_value_pairs(parameters, as_json=True)
+    await deployments.schedule(deployment, schedule, func_kwargs)
 
 
 @app.command(rich_help_panel="Manage Deployments")
