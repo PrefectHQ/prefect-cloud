@@ -227,9 +227,9 @@ def test_deploy_command_basic():
                     expected_code=0,
                     expected_output_contains=[
                         "Deployed test_function! 🎉",
-                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
-                        "Run it with:",
-                        "└─► prefect-cloud run test_function/test_function",
+                        "Run: prefect-cloud run test_function/test_function",
+                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
+                        "View: https://ui.url/deployments/deployment/test-deployment-id",
                     ],
                 )
 
@@ -240,63 +240,6 @@ def test_deploy_command_basic():
                 assert call_kwargs["filepath"] == "test.py"
                 assert call_kwargs["function"] == "test_function"
                 assert call_kwargs["work_pool_name"] == "test-pool"
-
-
-def test_deploy_and_run():
-    """Test deployment with immediate run"""
-    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
-        client = AsyncMock()
-        mock_client.return_value.__aenter__.return_value = client
-
-        # Mock necessary responses
-        client.ensure_managed_work_pool = AsyncMock(return_value="test-pool")
-        client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
-
-        # Create a proper mock for the flow run
-        flow_run_mock = MagicMock()
-        flow_run_mock.id = "test-run-id"
-        flow_run_mock.name = "test-run"
-
-        client.create_flow_run_from_deployment_id = AsyncMock(
-            return_value=flow_run_mock
-        )
-
-        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
-            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
-
-            with patch(
-                "prefect_cloud.github.GitHubRepo.get_file_contents"
-            ) as mock_content:
-                mock_content.return_value = textwrap.dedent("""
-                    def test_function(x: int):
-                        pass
-                """).lstrip()
-
-                invoke_and_assert(
-                    command=[
-                        "deploy",
-                        "flows/test.py:test_function",
-                        "--from",
-                        "github.com/owner/repo",
-                        "--with",
-                        "prefect",
-                        "--run",
-                        "--parameter",
-                        "x=1",
-                    ],
-                    expected_code=0,
-                    expected_output_contains=[
-                        "Deployed test_function! 🎉",
-                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
-                        "Started flow run test-run! 🚀",
-                        "└─► https://ui.url/runs/flow-run/test-run-id",
-                    ],
-                )
-
-                # Verify flow run was created
-                client.create_flow_run_from_deployment_id.assert_called_once_with(
-                    "test-deployment-id", {"x": 1}
-                )
 
 
 def test_deploy_private_repo_without_credentials():
@@ -363,7 +306,9 @@ def test_deploy_with_env_vars():
                     expected_code=0,
                     expected_output_contains=[
                         "Deployed test_function! 🎉",
-                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
+                        "Run: prefect-cloud run test_function/test_function",
+                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
+                        "View: https://ui.url/deployments/deployment/test-deployment-id",
                     ],
                 )
 
@@ -411,7 +356,9 @@ def test_deploy_with_private_repo_credentials():
                     expected_code=0,
                     expected_output_contains=[
                         "Deployed test_function! 🎉",
-                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
+                        "Run: prefect-cloud run test_function/test_function",
+                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
+                        "View: https://ui.url/deployments/deployment/test-deployment-id",
                     ],
                 )
 
@@ -432,13 +379,8 @@ def test_deploy_invalid_parameters():
 
             invoke_and_assert(
                 command=[
-                    "deploy",
-                    "test.py:test_function",
-                    "--from",
-                    "github.com/owner/repo",
-                    "--with",
-                    "prefect",
-                    "--run",
+                    "run",
+                    "test_deployment",
                     "--parameter",
                     "invalid_param",  # Missing = sign
                 ],
@@ -491,23 +433,30 @@ def test_run():
                 # Create a proper mock for the flow run
                 flow_run_mock = MagicMock()
                 flow_run_mock.id = "test-run-id"
-                flow_run_mock.name = (
-                    "test-run"  # Set as a string instead of a MagicMock
-                )
+                flow_run_mock.name = "test-run"
 
                 mock_run.return_value = flow_run_mock
 
                 invoke_and_assert(
-                    command=["run", "test_deployment"],
+                    command=[
+                        "run",
+                        "test_deployment",
+                        "--parameter",
+                        "x=1",
+                        "--parameter",
+                        "y=test",
+                    ],
                     expected_code=0,
                     expected_output_contains=[
                         "Started flow run test-run! 🚀",
-                        "└─► https://ui.url/runs/flow-run/test-run-id",
+                        "View: https://ui.url/runs/flow-run/test-run-id",
                     ],
                 )
 
-                # Verify the deployment was run
-                mock_run.assert_called_once_with("test_deployment")
+                # Verify the deployment was run with parameters
+                mock_run.assert_called_once_with(
+                    "test_deployment", {"x": 1, "y": "test"}
+                )
 
 
 def test_deploy_with_requirements_file():
@@ -542,7 +491,9 @@ def test_deploy_with_requirements_file():
                     expected_code=0,
                     expected_output_contains=[
                         "Deployed test_function! 🎉",
-                        "└─► https://ui.url/deployments/deployment/test-deployment-id",
+                        "Run: prefect-cloud run test_function/test_function",
+                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
+                        "View: https://ui.url/deployments/deployment/test-deployment-id",
                     ],
                 )
 
