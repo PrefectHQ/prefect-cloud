@@ -242,7 +242,7 @@ async def schedule(
         help="Name or ID of the deployment to schedule",
         autocompletion=completions.complete_deployment,
     ),
-    schedule: str = typer.Option(
+    schedule: str = typer.Argument(
         ...,
         help="Cron schedule string or 'none' to unschedule",
     ),
@@ -252,12 +252,6 @@ async def schedule(
         "-p",
         help="Flow Run parameters in NAME=VALUE format",
         default_factory=list,
-    ),
-    remove: bool = typer.Option(
-        False,
-        "--remove",
-        "-r",
-        help="Remove the schedule",
     ),
 ):
     """
@@ -273,13 +267,22 @@ async def schedule(
         Remove schedule:
         $ prefect-cloud schedule flow_name/deployment_name none
     """
-    if remove:
-        await deployments.schedule(deployment, "none")
-    else:
-        if not schedule:
-            exit_with_error("Schedule cannot be empty")
-        parameters_dict = process_key_value_pairs(parameters) if parameters else {}
-        await deployments.schedule(deployment, schedule, parameters_dict)
+
+    parameters_dict = process_key_value_pairs(parameters) if parameters else {}
+    await deployments.schedule(deployment, schedule, parameters_dict)
+
+
+@app.command(rich_help_panel="Manage Deployments")
+async def deschedule(
+    deployment: str = typer.Argument(
+        ...,
+        help="Name or ID of the deployment to remove schedules from",
+    ),
+):
+    """
+    Remove deployment schedules
+    """
+    await deployments.schedule(deployment, "none")
 
 
 @app.command(rich_help_panel="Manage Deployments")
