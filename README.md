@@ -39,67 +39,52 @@ def hello_world():
     print("Hello, World!")
 ```
 
-Deploy and run it using:
+### Deploy to Prefect Cloud
 ```
-prefect-cloud deploy <path/to/file.py:function_name> --from <source repo URL> --run
+prefect-cloud deploy <path/to/file.py:function_name> --from <source repo URL>
 ```
 e.g.
 ```bash
-prefect-cloud deploy examples/hello.py:hello_world --from https://github.com/PrefectHQ/prefect-cloud/ --run
+prefect-cloud deploy examples/hello.py:hello_world --from https://github.com/PrefectHQ/prefect-cloud/
 ```
 
-### Options
-**Only Deploy**
+### Run it with
 ```bash
-prefect-cloud deploy ... --from ...
-```
-
-**Deploy and Run**
+prefect-cloud run <flow_name>/<deployment_name>
+````
+e.g.
 ```bash
-prefect-cloud deploy ... --from ... --run --parameter a=1 --parameter b=2 
+prefect-cloud run hello_world/hello_world
 ```
 
-**Dependencies**
+### Schedule it with
+```bash
+prefect-cloud schedule <flow_name>/<deployment_name> <SCHEDULE>
+````
+e.g.
+```bash
+prefect-cloud schedule hello_world/hello_world "0 * * * *"
+```
 
+
+### Additional Options
+
+**Add Dependencies**
 ```bash
 # Add dependencies
-prefect-cloud deploy ... --from ... --with pandas --with numpy
+prefect-cloud deploy ... --with pandas --with numpy
 
 # Or install from requirements file at runtime
-prefect-cloud deploy ... --from ... --with-requirements </path/to/requirements.txt>
+prefect-cloud deploy ... --with-requirements </path/to/requirements.txt>
 ```
 
-**Environment Variables**
+**Inclcude Environment Variables**
 ```bash
-prefect-cloud deploy ... --from ... --env KEY=VALUE --env KEY2=VALUE2
+prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
 ```
 
-**Private Repositories**
+**From a Private Repository**
 ```bash
-prefect-cloud deploy ... --from https://github.com/myorg/private-repo/blob/main/flows.py --credentials GITHUB_TOKEN
+prefect-cloud deploy ... https://github.com/myorg/private-repo/blob/main/flows.py --credentials GITHUB_TOKEN
 ```
 
-## Managing Deployments
-
-List all deployments:
-```bash
-prefect-cloud ls
-```
-
-Run a deployment:
-```bash
-prefect-cloud run function_name/deployment_name
-```
-
-Schedule a deployment (using cron):
-```bash
-prefect-cloud schedule function_name/deployment_name "*/5 * * * *"  # Run every 5 minutes
-prefect-cloud schedule function_name/deployment_name none  # Remove schedule
-```
-Format: `minute hour day-of-month month day-of-week`
-
-Pause/Resume a deployment:
-```bash
-prefect-cloud pause function_name/deployment_name
-prefect-cloud resume function_name/deployment_name
-```

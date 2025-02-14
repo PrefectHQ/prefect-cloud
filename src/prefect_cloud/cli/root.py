@@ -87,22 +87,6 @@ async def deploy(
         rich_help_panel="Configuration",
         show_default=False,
     ),
-    parameters: list[str] = typer.Option(
-        ...,
-        "--parameter",
-        "-p",
-        help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
-        default_factory=list,
-        rich_help_panel="Run",
-        show_default=False,
-    ),
-    run: bool = typer.Option(
-        False,
-        "--run",
-        "-r",
-        help="Run immediately after creation",
-        rich_help_panel="Run",
-    ),
 ):
     """
     Deploy a Python function to Prefect Cloud
@@ -114,11 +98,6 @@ async def deploy(
 
     Deploy with a requirements file:
     $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --with-requirements requirements.txt
-
-    Deploy and run immediately:
-    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --run
-
-
     """
     ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
 
@@ -140,9 +119,6 @@ async def deploy(
             # Pre-process CLI arguments
             pip_packages = get_dependencies(dependencies)
             env_vars = process_key_value_pairs(env, progress=progress)
-            func_kwargs = process_key_value_pairs(
-                parameters, progress=progress, as_json=True
-            )
 
             # Get repository info and file contents
             github_ref = GitHubRepo.from_url(repo)
@@ -206,29 +182,33 @@ async def deploy(
             progress.update(task, completed=True, description="Code deployed!")
 
         deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
+        run_prefix = "├─► Run: "
+        run_cmd = f"prefect-cloud run {function}/{deployment_name}"
+        schedule_prefix = "├─► Schedule: "
+        schedule_cmd = f"prefect-cloud schedule {function}/{deployment_name} <SCHEDULE>"
+        blank_space_len = (
+            len(schedule_prefix + schedule_cmd) - len(run_prefix + run_cmd) + 1
+        )
+        deployed_msg = f"[bold]Deployed [cyan]{deployment_name}[/cyan]! 🎉[/bold]"
+        left_border = " ┌── "
+        right_border = " ─"
+
+        # Use schedule length directly since it's always longer
+        remaining_dashes = (
+            len(schedule_prefix + schedule_cmd)
+            - (len(left_border) + len(right_border))
+            - len(f"Deployed {deployment_name}! 🎉")
+            + 1
+        )
 
         app.console.print(
-            f"[bold]Deployed [cyan]{deployment_name}[/cyan]! 🎉[/bold]",
-            "\n└─►",
+            f"{left_border}{deployed_msg}{right_border}{'─' * remaining_dashes}┐\n",
+            f"{run_prefix}[bold][cyan]{run_cmd}[/cyan][/bold]{' ' * blank_space_len}│\n",
+            f"{schedule_prefix}[bold][cyan]{schedule_cmd}[/cyan][/bold] ┘ \n",
+            "└─► View:",
             Text(deployment_url, style="link", justify="left"),
             soft_wrap=True,
         )
-
-        if run:
-            flow_run = await client.create_flow_run_from_deployment_id(
-                deployment_id, func_kwargs
-            )
-            flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
-            app.console.print(
-                f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─►",
-                Text(flow_run_url, style="link", justify="left"),
-                soft_wrap=True,
-            )
-        else:
-            app.console.print(
-                "[bold]Run it with:[/bold]"
-                f"\n└─► [green]prefect-cloud run {function}/{deployment_name}[/green]"
-            )
 
 
 @app.command(rich_help_panel="Deploy")
@@ -238,6 +218,15 @@ async def run(
         help="Name or ID of the deployment to run",
         autocompletion=completions.complete_deployment,
     ),
+    parameters: list[str] = typer.Option(
+        ...,
+        "--parameter",
+        "-p",
+        help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
+        default_factory=list,
+        rich_help_panel="Run",
+        show_default=False,
+    ),
 ):
     """
     Run a deployment immediately
@@ -246,11 +235,13 @@ async def run(
         $ prefect-cloud run flow_name/deployment_name
     """
     ui_url, _, _ = await auth.get_cloud_urls_or_login()
-    flow_run = await deployments.run(deployment)
+    func_kwargs = process_key_value_pairs(parameters, as_json=True)
+
+    flow_run = await deployments.run(deployment, func_kwargs)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
 
     app.console.print(
-        f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─►",
+        f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─► View:",
         Text(flow_run_url, style="link", justify="left"),
         soft_wrap=True,
     )

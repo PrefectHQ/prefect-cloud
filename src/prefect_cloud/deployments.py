@@ -54,11 +54,16 @@ async def delete(deployment_: str):
         await client.delete_deployment(deployment.id)
 
 
-async def run(deployment_: str) -> DeploymentFlowRun:
+async def run(
+    deployment_: str,
+    parameters: dict[str, Any] | None = None,
+) -> DeploymentFlowRun:
     deployment = await _get_deployment(deployment_)
 
     async with await get_prefect_cloud_client() as client:
-        return await client.create_flow_run_from_deployment_id(deployment.id)
+        return await client.create_flow_run_from_deployment_id(
+            deployment.id, parameters
+        )
 
 
 async def schedule(
