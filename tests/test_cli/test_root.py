@@ -281,7 +281,7 @@ def test_deploy_and_run():
                         "--with",
                         "prefect",
                         "--run",
-                        "--parameters",
+                        "--parameter",
                         "x=1",
                     ],
                     expected_code=0,
@@ -295,7 +295,7 @@ def test_deploy_and_run():
 
                 # Verify flow run was created
                 client.create_flow_run_from_deployment_id.assert_called_once_with(
-                    "test-deployment-id", {"x": "1"}
+                    "test-deployment-id", {"x": 1}
                 )
 
 
@@ -439,7 +439,7 @@ def test_deploy_invalid_parameters():
                     "--with",
                     "prefect",
                     "--run",
-                    "--parameters",
+                    "--parameter",
                     "invalid_param",  # Missing = sign
                 ],
                 expected_code=1,

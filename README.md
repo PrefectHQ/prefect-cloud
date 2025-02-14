@@ -56,7 +56,7 @@ prefect-cloud deploy ... --from ...
 
 **Deploy and Run**
 ```bash
-prefect-cloud deploy ... --from ... --run --parameters name=value
+prefect-cloud deploy ... --from ... --run --parameter a=1 --parameter b=2 
 ```
 
 **Dependencies**
