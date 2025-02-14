@@ -94,6 +94,7 @@ class GitHubRepo:
 
     def to_pull_step(self, credentials_block: str | None = None) -> dict[str, Any]:
         pull_step_kwargs = {
+            "id": "git-clone",
             "repository": self.clone_url,
             "branch": self.ref,
         }

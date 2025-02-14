@@ -62,12 +62,11 @@ prefect-cloud deploy ... --from ... --run --parameters name=value
 **Dependencies**
 
 ```bash
-# Package names
+# Add dependencies
 prefect-cloud deploy ... --from ... --with pandas --with numpy
 
-# Or from files
-prefect-cloud deploy ... --from ... --with requirements.txt
-prefect-cloud deploy ... --from ... --with pyproject.toml
+# Or install from requirements file at runtime
+prefect-cloud deploy ... --from ... --with-requirements </path/to/requirements.txt>
 ```
 
 **Environment Variables**

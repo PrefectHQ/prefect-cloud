@@ -38,8 +38,7 @@ app = PrefectCloudTyper(
 @app.command(rich_help_panel="Deploy")
 async def deploy(
     function: str = typer.Argument(
-        help="The path to the Python function to deploy (format: path/to/file.py:function_name)",
-        rich_help_panel="Arguments",
+        help="The path to the Python function to deploy in <path/to/file.py:function_name> format",
         show_default=False,
     ),
     repo: str = typer.Option(
@@ -47,9 +46,9 @@ async def deploy(
         "--from",
         "-f",
         help=(
-            "GitHub repository URL. Supports:\n\n"
+            "GitHub repository URL. e.g.\n\n"
             "• Repo: github.com/owner/repo\n\n"
-            "• Specific branch: github.com/owner/repo/tree/branch\n\n"
+            "• Specific branch: github.com/owner/repo/tree/<branch>\n\n"
             "• Specific commit: github.com/owner/repo/tree/<commit-sha>\n\n"
         ),
         rich_help_panel="Source",
@@ -67,21 +66,23 @@ async def deploy(
         ...,
         "--with",
         "-d",
-        help=(
-            "Python dependencies to include:\n"
-            "• Single package: --with prefect\n"
-            "• Multiple packages: --with prefect --with pandas\n"
-            "• From file: --with requirements.txt or --with pyproject.toml"
-        ),
+        help=("Python dependencies to include (can be used multiple times)"),
         default_factory=list,
-        rich_help_panel="Configuration",
+        rich_help_panel="Dependencies",
+        show_default=False,
+    ),
+    with_requirements: str | None = typer.Option(
+        None,
+        "--with-requirements",
+        help="Path to repository's requirements file",
+        rich_help_panel="Dependencies",
         show_default=False,
     ),
     env: list[str] = typer.Option(
         ...,
         "--env",
         "-e",
-        help="Environment variables in KEY=VALUE format",
+        help="Environment variables in <KEY=VALUE> format (can be used multiple times)",
         default_factory=list,
         rich_help_panel="Configuration",
         show_default=False,
@@ -90,17 +91,17 @@ async def deploy(
         ...,
         "--parameters",
         "-p",
-        help="Flow Run parameters in NAME=VALUE format (only used with --run)",
+        help="Function parameters in <NAME=VALUE> format (can be used multiple times)",
         default_factory=list,
-        rich_help_panel="Execution",
+        rich_help_panel="Run",
         show_default=False,
     ),
     run: bool = typer.Option(
         False,
         "--run",
         "-r",
-        help="Run the deployment immediately after creation",
-        rich_help_panel="Execution",
+        help="Run immediately after creation",
+        rich_help_panel="Run",
     ),
 ):
     """
@@ -172,13 +173,24 @@ async def deploy(
 
             progress.update(task, description="Deploying code...")
 
+            pull_steps = [github_ref.to_pull_step(credentials_name)]
+            if with_requirements:
+                pull_steps.append(
+                    {
+                        "prefect.deployments.steps.run_shell_script": {
+                            "directory": "{{ git-clone.directory }}",
+                            "script": f"uv pip install -r {with_requirements}",
+                        }
+                    }
+                )
+
             deployment_name = f"{function}"
             deployment_id = await client.create_managed_deployment(
                 deployment_name=deployment_name,
                 filepath=filepath,
                 function=function,
                 work_pool_name=work_pool,
-                pull_steps=[github_ref.to_pull_step(credentials_name)],
+                pull_steps=pull_steps,
                 parameter_schema=parameter_schema,
                 job_variables={
                     "pip_packages": pip_packages,
