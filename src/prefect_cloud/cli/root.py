@@ -24,9 +24,9 @@ from prefect_cloud.schemas.objects import (
     IntervalSchedule,
     RRuleSchedule,
 )
+from prefect_cloud.utilities.blocks import safe_block_name
 from prefect_cloud.utilities.callables import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
-from prefect_cloud.utilities.blocks import safe_block_name
 
 app = PrefectCloudTyper(
     rich_markup_mode=True,
@@ -170,7 +170,7 @@ async def deploy(
                 deployment_name=deployment_name,
                 filepath=filepath,
                 function=function,
-                work_pool_name=work_pool,
+                work_pool_name=work_pool.name,
                 pull_steps=pull_steps,
                 parameter_schema=parameter_schema,
                 job_variables={
@@ -210,6 +210,17 @@ async def deploy(
             soft_wrap=True,
         )
 
+        if work_pool.is_paused:
+            work_pool_url = f"{ui_url}/work-pools"
+            app.console.print(
+                "[bold][orange1]Note:[/orange1][/bold] Your managed work pool is",
+                "currently [bold]paused[/bold]. This will prevent the deployment "
+                "from running until it is [bold]resumed[/bold].  Visit",
+                Text(work_pool_url, style="link", justify="left"),
+                "to resume the work pool.",
+                soft_wrap=True,
+            )
+
 
 @app.command(rich_help_panel="Deploy")
 async def run(
@@ -245,6 +256,22 @@ async def run(
         Text(flow_run_url, style="link", justify="left"),
         soft_wrap=True,
     )
+
+    async with await auth.get_prefect_cloud_client() as client:
+        deployment_ = await deployments.get_deployment(deployment)
+        work_pool = await client.read_work_pool_by_name(deployment_.work_pool_name)
+
+    work_pool_url = f"{ui_url}/work-pools"
+    if work_pool.is_paused:
+        app.console.print(
+            "\n",
+            "[bold][orange1]Note:[/orange1][/bold] Your managed work pool is",
+            "currently [bold]paused[/bold]. This will prevent the deployment "
+            "from running until it is [bold]resumed[/bold].  Visit",
+            Text(work_pool_url, style="link", justify="left"),
+            "to resume the work pool.",
+            soft_wrap=True,
+        )
 
 
 @app.command(rich_help_panel="Deploy")

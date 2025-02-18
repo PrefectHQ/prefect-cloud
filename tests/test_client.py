@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 import respx
 from httpx import Response
+
 from prefect_cloud.client import PrefectCloudClient
 from prefect_cloud.schemas.objects import (
     BlockDocument,
@@ -14,7 +15,7 @@ from prefect_cloud.schemas.objects import (
     WorkPool,
 )
 from prefect_cloud.schemas.responses import DeploymentResponse
-from prefect_cloud.utilities.exception import ObjectNotFound, ObjectAlreadyExists
+from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
 
 PREFECT_API_KEY = "test_key"
 PREFECT_API_URL = "https://api.prefect.cloud/api/accounts/123/workspaces/456"
@@ -31,6 +32,7 @@ def mock_deployment() -> DeploymentResponse:
         id=uuid4(),
         flow_id=uuid4(),
         name="test-deployment",
+        work_pool_name="test-pool",
         schedules=[],
     )
 

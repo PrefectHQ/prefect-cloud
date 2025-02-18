@@ -5,14 +5,17 @@ import re
 import textwrap
 from typing import Iterable
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import readchar
-from rich.console import Console
 from click.testing import Result
+from rich.console import Console
 from typer.testing import CliRunner
 
 from prefect_cloud.cli.root import app
 from prefect_cloud.github import FileNotFound
+from prefect_cloud.schemas.objects import WorkPool
+from prefect_cloud.schemas.responses import DeploymentResponse
 
 
 def check_contains(cli_result: Result, content: str, should_contain: bool) -> None:
@@ -199,7 +202,11 @@ def test_deploy_command_basic():
         mock_client.return_value.__aenter__.return_value = client
 
         # Mock auth responses
-        client.ensure_managed_work_pool = AsyncMock(return_value="test-pool")
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
 
         # Mock auth.get_cloud_urls_or_login
@@ -276,7 +283,11 @@ def test_deploy_with_env_vars():
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
-        client.ensure_managed_work_pool = AsyncMock(return_value="test-pool")
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
 
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
@@ -327,7 +338,11 @@ def test_deploy_with_private_repo_credentials():
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
-        client.ensure_managed_work_pool = AsyncMock(return_value="test-pool")
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
         client.create_credentials_secret = AsyncMock()
 
@@ -422,9 +437,26 @@ def test_deploy_function_not_found():
 
 def test_run():
     """Test running a deployment"""
-    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+    mock_deployment = DeploymentResponse(
+        id=uuid4(),
+        flow_id=uuid4(),
+        name="test-deployment",
+        work_pool_name="test-pool",
+        schedules=[],
+    )
+
+    with (
+        patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client,
+        patch("prefect_cloud.deployments.get_deployment", return_value=mock_deployment),
+    ):
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
+
+        client.read_work_pool_by_name = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
 
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
             mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
@@ -465,7 +497,11 @@ def test_deploy_with_requirements_file():
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
-        client.ensure_managed_work_pool = AsyncMock(return_value="test-pool")
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
 
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
