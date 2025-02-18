@@ -78,7 +78,7 @@ prefect-cloud deploy ... --with pandas --with numpy
 prefect-cloud deploy ... --with-requirements </path/to/requirements.txt>
 ```
 
-**Inclcude Environment Variables**
+**Include Environment Variables**
 ```bash
 prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
 ```
