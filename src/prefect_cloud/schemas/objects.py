@@ -120,6 +120,15 @@ class DeploymentSchedule(BaseModel):
     )
 
 
+class Deployment(BaseModel):
+    id: UUID = Field(default=..., description="The ID of the deployment.")
+    name: str = Field(default=..., description="The name of the deployment.")
+    flow_id: UUID = Field(default=..., description="The ID of the flow.")
+    schedules: list[DeploymentSchedule] = Field(
+        default_factory=list, description="A list of schedules for the deployment."
+    )
+
+
 class WorkPool(BaseModel):
     """An ORM representation of a work pool"""
 
