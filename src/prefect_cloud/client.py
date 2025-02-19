@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
 from uuid import UUID
 
 import httpx
@@ -26,6 +26,9 @@ from prefect_cloud.settings import settings
 from prefect_cloud.utilities.callables import ParameterSchema
 from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
 from prefect_cloud.utilities.generics import validate_list
+
+if TYPE_CHECKING:
+    from prefect_cloud.schemas.objects import Deployment
 
 PREFECT_MANAGED = "prefect:managed"
 HTTP_METHODS: TypeAlias = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
@@ -527,7 +530,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         *,
         limit: int | None = None,
         offset: int = 0,
-    ) -> list["DeploymentResponse"]:
+    ) -> list["Deployment"]:
         """
         Query the Prefect API for deployments. Only deployments matching all
         the provided criteria will be returned.
@@ -540,7 +543,7 @@ class PrefectCloudClient(httpx.AsyncClient):
             a list of Deployment model representations
                 of the deployments
         """
-        from prefect_cloud.schemas.responses import DeploymentResponse
+        from prefect_cloud.schemas.objects import Deployment
 
         body: dict[str, Any] = {
             "limit": limit,
@@ -549,7 +552,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         }
 
         response = await self.request("POST", "/deployments/filter", json=body)
-        return validate_list(DeploymentResponse, response.json())
+        return validate_list(Deployment, response.json())
 
     async def create_deployment_schedule(
         self,

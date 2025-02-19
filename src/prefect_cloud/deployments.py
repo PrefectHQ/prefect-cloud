@@ -6,13 +6,18 @@ from uuid import UUID
 import tzlocal
 
 from prefect_cloud.auth import get_prefect_cloud_client
-from prefect_cloud.schemas.objects import CronSchedule, DeploymentFlowRun, Flow
+from prefect_cloud.schemas.objects import (
+    CronSchedule,
+    Deployment,
+    DeploymentFlowRun,
+    Flow,
+)
 from prefect_cloud.schemas.responses import DeploymentResponse
 
 
 @dataclass
 class DeploymentListContext:
-    deployments: list[DeploymentResponse]
+    deployments: list[Deployment]
     flows_by_id: dict[UUID, Flow]
     next_runs_by_deployment_id: dict[UUID, DeploymentFlowRun]
 
