@@ -37,7 +37,7 @@ async def list() -> DeploymentListContext:
     )
 
 
-async def _get_deployment(deployment_: str) -> DeploymentResponse:
+async def get_deployment(deployment_: str) -> DeploymentResponse:
     async with await get_prefect_cloud_client() as client:
         try:
             deployment_id = UUID(deployment_)
@@ -48,7 +48,7 @@ async def _get_deployment(deployment_: str) -> DeploymentResponse:
 
 
 async def delete(deployment_: str):
-    deployment = await _get_deployment(deployment_)
+    deployment = await get_deployment(deployment_)
 
     async with await get_prefect_cloud_client() as client:
         await client.delete_deployment(deployment.id)
@@ -58,7 +58,7 @@ async def run(
     deployment_: str,
     parameters: dict[str, Any] | None = None,
 ) -> DeploymentFlowRun:
-    deployment = await _get_deployment(deployment_)
+    deployment = await get_deployment(deployment_)
 
     async with await get_prefect_cloud_client() as client:
         return await client.create_flow_run_from_deployment_id(
@@ -69,7 +69,7 @@ async def run(
 async def schedule(
     deployment_: str, schedule: str, parameters: Optional[dict[str, Any]] = None
 ):
-    deployment = await _get_deployment(deployment_)
+    deployment = await get_deployment(deployment_)
 
     async with await get_prefect_cloud_client() as client:
         for prior_schedule in deployment.schedules:

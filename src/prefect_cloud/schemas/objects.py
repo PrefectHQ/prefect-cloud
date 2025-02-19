@@ -130,6 +130,9 @@ class WorkPool(BaseModel):
     base_job_template: dict[str, Any] = Field(
         default_factory=dict, description="The work pool's base job template."
     )
+    is_paused: bool = Field(
+        default=False, description="Whether or not the work pool is paused."
+    )
 
 
 class CronSchedule(BaseModel):

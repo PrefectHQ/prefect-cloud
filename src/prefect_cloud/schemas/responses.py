@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, Field
 
 import prefect_cloud.schemas.objects as objects
 
@@ -12,3 +12,4 @@ class DeploymentResponse(BaseModel):
     schedules: list[objects.DeploymentSchedule] = Field(
         default_factory=list, description="A list of schedules for the deployment."
     )
+    work_pool_name: str = Field(default=..., description="The name of the work pool.")

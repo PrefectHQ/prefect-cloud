@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from logging import getLogger
 from typing import Any, Dict, Literal, Optional, Union
 from uuid import UUID
 
@@ -32,7 +31,6 @@ PREFECT_MANAGED = "prefect:managed"
 HTTP_METHODS: TypeAlias = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
 
 PREFECT_API_REQUEST_TIMEOUT = 60.0
-logger = getLogger(__name__)
 
 
 class PrefectCloudClient(httpx.AsyncClient):
@@ -735,13 +733,17 @@ class PrefectCloudClient(httpx.AsyncClient):
 
         return validate_list(DeploymentFlowRun, response.json())
 
+    async def get_default_managed_work_pool(self) -> WorkPool | None:
+        work_pools = await self.read_managed_work_pools()
+        if work_pools:
+            return work_pools[0]
+
     async def ensure_managed_work_pool(
         self, name: str = settings.default_managed_work_pool_name
-    ) -> str:
-        work_pools = await self.read_managed_work_pools()
-
-        if work_pools:
-            return work_pools[0].name
+    ) -> WorkPool:
+        work_pool = await self.get_default_managed_work_pool()
+        if work_pool:
+            return work_pool
 
         template = await self.get_default_base_job_template_for_managed_work_pool()
         if template is None:
@@ -752,7 +754,7 @@ class PrefectCloudClient(httpx.AsyncClient):
             template=template,
         )
 
-        return work_pool.name
+        return work_pool
 
     async def create_managed_deployment(
         self,
