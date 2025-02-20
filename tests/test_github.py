@@ -1,7 +1,18 @@
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+import click.exceptions
 import pytest
 from httpx import Response
 
-from prefect_cloud.github import FileNotFound, GitHubRepo
+from prefect_cloud.github import (
+    FileNotFound,
+    GitHubRepo,
+    get_local_repo_urls,
+    infer_repo_url,
+)
 
 
 class TestGitHubRepo:
@@ -197,4 +208,133 @@ class TestGitHubContent:
                 "branch": "main",
                 "access_token": "{{ prefect.blocks.secret.test-creds }}",
             }
+        }
+
+
+@pytest.fixture
+def git_repo(tmp_path: Path) -> Path:
+    """Create a temporary git repository."""
+    os.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    return tmp_path
+
+
+class TestInferRepoUrl:
+    def test_infers_https_url(self, git_repo: Path):
+        subprocess.run(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/ExampleOwner/example-repo",
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+        assert infer_repo_url() == "https://github.com/ExampleOwner/example-repo"
+
+    def test_infers_ssh_url(self, git_repo: Path):
+        subprocess.run(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                "git@github.com:ExampleOwner/example-repo.git",
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+        assert infer_repo_url() == "https://github.com/ExampleOwner/example-repo"
+
+    def test_exits_when_not_git_repo(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.chdir(temp_dir)
+
+            with pytest.raises(click.exceptions.Exit):
+                infer_repo_url()
+
+    def test_exits_when_not_github_url(self, git_repo: Path):
+        subprocess.run(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                "https://gitlab.com/ExampleOwner/example-repo",
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+        with pytest.raises(click.exceptions.Exit):
+            infer_repo_url()
+
+
+class TestGetLocalRepoUrls:
+    def test_returns_empty_list_when_not_git_repo(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.chdir(temp_dir)
+
+            assert get_local_repo_urls() == []
+
+    def test_returns_github_urls(self, git_repo: Path):
+        remotes = [
+            ("origin", "https://github.com/ExampleOwner/example-repo"),
+            ("upstream", "https://github.com/UpstreamOwner/example-repo"),
+        ]
+
+        for name, url in remotes:
+            subprocess.run(
+                ["git", "remote", "add", name, url],
+                check=True,
+                capture_output=True,
+            )
+
+        urls = get_local_repo_urls()
+        assert len(urls) == 2
+        assert set(urls) == {remote[1] for remote in remotes}
+
+    def test_filters_non_github_urls(self, git_repo: Path):
+        remotes = [
+            ("origin", "https://github.com/ExampleOwner/example-repo"),
+            ("gitlab", "https://gitlab.com/ExampleOwner/example-repo"),
+            ("upstream", "https://github.com/UpstreamOwner/example-repo"),
+        ]
+
+        for name, url in remotes:
+            subprocess.run(
+                ["git", "remote", "add", name, url],
+                check=True,
+                capture_output=True,
+            )
+
+        urls = get_local_repo_urls()
+        assert len(urls) == 2
+        assert set(urls) == {
+            "https://github.com/ExampleOwner/example-repo",
+            "https://github.com/UpstreamOwner/example-repo",
+        }
+
+    def test_translates_ssh_urls(self, git_repo: Path):
+        remotes = [
+            ("origin", "git@github.com:ExampleOwner/example-repo.git"),
+            ("upstream", "https://github.com/UpstreamOwner/example-repo"),
+        ]
+
+        for name, url in remotes:
+            subprocess.run(
+                ["git", "remote", "add", name, url],
+                check=True,
+                capture_output=True,
+            )
+
+        urls = get_local_repo_urls()
+        assert len(urls) == 2
+        assert set(urls) == {
+            "https://github.com/ExampleOwner/example-repo",
+            "https://github.com/UpstreamOwner/example-repo",
         }

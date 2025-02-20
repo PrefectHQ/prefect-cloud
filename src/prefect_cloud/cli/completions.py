@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 
 from prefect_cloud.auth import get_cloud_urls_without_login, sync_cloud_client
+from prefect_cloud.github import get_local_repo_urls
 
 COMPLETION_CACHE = Path.home() / ".prefect" / "prefect-cloud-completions.json"
 CACHE_TTL = 86400
@@ -52,3 +53,7 @@ def complete_deployment(incomplete: str) -> list[str]:
             json.dump({"deployment_names": deployment_names}, f)
 
     return [name for name in deployment_names if name.startswith(incomplete)]
+
+
+def complete_repo(incomplete: str) -> list[str]:
+    return [url for url in get_local_repo_urls() if url.startswith(incomplete)]

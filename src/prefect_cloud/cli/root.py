@@ -14,10 +14,7 @@ from prefect_cloud.cli.utilities import (
     process_key_value_pairs,
 )
 from prefect_cloud.dependencies import get_dependencies
-from prefect_cloud.github import (
-    FileNotFound,
-    GitHubRepo,
-)
+from prefect_cloud.github import FileNotFound, GitHubRepo, infer_repo_url
 from prefect_cloud.schemas.objects import (
     CronSchedule,
     DeploymentSchedule,
@@ -45,11 +42,14 @@ async def deploy(
         ...,
         "--from",
         "-f",
+        default_factory=infer_repo_url,
+        autocompletion=completions.complete_repo,
         help=(
             "GitHub repository URL. e.g.\n\n"
             "• Repo: github.com/owner/repo\n\n"
             "• Specific branch: github.com/owner/repo/tree/<branch>\n\n"
             "• Specific commit: github.com/owner/repo/tree/<commit-sha>\n\n"
+            "If not provided, the repository of the current directory will be used."
         ),
         rich_help_panel="Source",
         show_default=False,
