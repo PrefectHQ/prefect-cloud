@@ -15,7 +15,6 @@ from prefect_cloud.schemas.objects import (
     WorkPool,
 )
 from prefect_cloud.schemas.responses import DeploymentResponse
-from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
 
 PREFECT_API_KEY = "test_key"
 PREFECT_API_URL = "https://api.prefect.cloud/api/accounts/123/workspaces/456"
@@ -127,30 +126,18 @@ async def test_create_deployment(
     assert result == mock_deployment.id
 
 
-async def test_read_block_document_not_found(
-    client: PrefectCloudClient,
-    respx_mock: respx.Router,
-):
-    block_id = uuid4()
-    respx_mock.get(f"{PREFECT_API_URL}/block_documents/{block_id}").mock(
-        return_value=Response(404, json={"detail": "Block document not found"})
-    )
-
-    with pytest.raises(ObjectNotFound):
-        await client.read_block_document(block_id)
-
-
-async def test_create_block_document_already_exists(
+async def test_upsert_block_document_creates_block(
     client: PrefectCloudClient,
     mock_block_document: BlockDocument,
     respx_mock: respx.Router,
 ):
-    respx_mock.post(f"{PREFECT_API_URL}/block_documents/").mock(
-        return_value=Response(409, json={"detail": "Block document already exists"})
+    respx_mock.put(f"{PREFECT_API_URL}/block_documents/").mock(
+        return_value=Response(200, json=mock_block_document.model_dump(mode="json"))
     )
 
-    with pytest.raises(ObjectAlreadyExists):
-        await client.create_block_document(mock_block_document)
+    result = await client.upsert_block_document(mock_block_document)
+
+    assert result == mock_block_document
 
 
 async def test_read_deployment_by_name(
