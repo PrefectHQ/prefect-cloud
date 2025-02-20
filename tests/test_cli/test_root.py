@@ -491,6 +491,69 @@ def test_run():
                 )
 
 
+def test_deploy_with_dependencies():
+    """Test deployment with python dependencies"""
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+        client = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = client
+
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
+        client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
+
+        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
+            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
+
+            with patch(
+                "prefect_cloud.github.GitHubRepo.get_file_contents"
+            ) as mock_content:
+                mock_content.return_value = textwrap.dedent("""
+                    def test_function():
+                        pass
+                """).lstrip()
+
+                invoke_and_assert(
+                    command=[
+                        "deploy",
+                        "test.py:test_function",
+                        "--from",
+                        "github.com/owner/repo",
+                        "--with",
+                        "requests>=2",
+                        "--with",
+                        "pandas>=1",
+                    ],
+                    expected_code=0,
+                    expected_output_contains=[
+                        "Deployed test_function! 🎉",
+                        "Run: prefect-cloud run test_function/test_function",
+                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
+                        "View: https://ui.url/deployments/deployment/test-deployment-id",
+                    ],
+                )
+
+                # Verify deployment was created with correct pull steps
+                client.create_managed_deployment.assert_called_once()
+                deployment = client.create_managed_deployment.call_args[1]
+
+                # We don't want to pass them as EXTRA_PIP_PACKAGES, because that happens
+                # before logging can be set up, so any problems with the dependencies
+                # will be obscured to users.
+                assert "pip_packages" not in deployment["job_variables"]
+
+                pull_steps = deployment["pull_steps"]
+                assert len(pull_steps) == 2
+                assert pull_steps[1] == {
+                    "prefect.deployments.steps.run_shell_script": {
+                        "directory": "{{ git-clone.directory }}",
+                        "script": "uv pip install 'requests>=2' 'pandas>=1'",
+                    }
+                }
+
+
 def test_deploy_with_requirements_file():
     """Test deployment with a requirements file"""
     with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:

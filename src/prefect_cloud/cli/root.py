@@ -117,7 +117,6 @@ async def deploy(
             task = progress.add_task("Inspecting code...", total=None)
 
             # Pre-process CLI arguments
-            pip_packages = get_dependencies(dependencies)
             env_vars = process_key_value_pairs(env, progress=progress)
 
             # Get repository info and file contents
@@ -155,6 +154,18 @@ async def deploy(
             progress.update(task, description="Deploying code...")
 
             pull_steps = [github_ref.to_pull_step(credentials_name)]
+            if dependencies:
+                quoted_dependencies = [
+                    f"'{dependency}'" for dependency in get_dependencies(dependencies)
+                ]
+                pull_steps.append(
+                    {
+                        "prefect.deployments.steps.run_shell_script": {
+                            "directory": "{{ git-clone.directory }}",
+                            "script": f"uv pip install {' '.join(quoted_dependencies)}",
+                        }
+                    }
+                )
             if with_requirements:
                 pull_steps.append(
                     {
@@ -174,7 +185,6 @@ async def deploy(
                 pull_steps=pull_steps,
                 parameter_schema=parameter_schema,
                 job_variables={
-                    "pip_packages": pip_packages,
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
                 },
             )
