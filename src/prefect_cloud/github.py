@@ -1,8 +1,11 @@
+import subprocess
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
 from httpx import AsyncClient
+
+from prefect_cloud.cli.utilities import exit_with_error
 
 
 class FileNotFound(Exception):
@@ -111,3 +114,72 @@ class GitHubRepo:
             )
 
         return {"prefect.deployments.steps.git_clone": pull_step_kwargs}
+
+
+def translate_to_http(url: str) -> str:
+    """
+    Translate a git URL to an HTTP URL.
+    """
+    url = url.strip()
+
+    if url.startswith("git@github.com:"):
+        url = "https://github.com/" + url.split("git@github.com:")[1]
+
+    if url.endswith(".git"):
+        url = url.removesuffix(".git")
+
+    return url
+
+
+def infer_repo_url() -> str:
+    """
+    Infer the repository URL from the current directory.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        url = result.stdout.strip()
+
+        url = translate_to_http(url)
+
+        if not url.startswith("https://github.com"):
+            raise ValueError("Repository URL must be from github.com")
+
+        return url
+
+    except (subprocess.CalledProcessError, ValueError):
+        exit_with_error(
+            "No repository specified, and this directory doesn't appear to be a "
+            "GitHub repository.  Specify --from to indicate where Prefect Cloud will "
+            "download your code from."
+        )
+
+
+def get_local_repo_urls() -> list[str]:
+    """
+    Get all local repository URLs from the current directory.
+    """
+    try:
+        remotes = subprocess.run(
+            ["git", "remote", "show"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        all_urls: list[str] = []
+        for remote in remotes.stdout.splitlines():
+            result = subprocess.run(
+                ["git", "remote", "get-url", remote],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            urls = [translate_to_http(url) for url in result.stdout.splitlines()]
+            all_urls += [url for url in urls if url.startswith("https://github.com")]
+        return all_urls
+    except (subprocess.CalledProcessError, ValueError):
+        return []
