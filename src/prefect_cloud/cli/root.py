@@ -200,10 +200,10 @@ async def deploy(
         app.console.print(
             f"[bold]Deployed [cyan]{deployment_name}[/cyan] to Prefect Cloud! 🎉[/bold]\n",
             "\n",
-            f"The repository [bold][cyan]{repo}[/cyan][/bold] will be cloned each time "
-            f"this deployment is run to execute the function "
-            f"[bold][cyan]{function}[/cyan][/bold] "
-            f"from the file [bold][cyan]{filepath}[/cyan][/bold].\n",
+            f"Runs of this deployment will "
+            f"clone [bold][cyan]{repo}[/cyan][/bold] to "
+            f"execute [bold][cyan]{function}[/cyan][/bold] ",
+            f"from [bold][cyan]{filepath}[/cyan][/bold].\n",
             sep="",
         )
 
@@ -218,15 +218,13 @@ async def deploy(
 
         if work_pool.is_paused:
             work_pool_url = f"{ui_url}/work-pools"
+            print()
             app.console.print(
-                "\n",
-                "[bold][orange1]Note:[/orange1][/bold] Your work pool is ",
-                "currently [bold]paused[/bold]. This will prevent the deployment ",
-                "from running until it is [bold]resumed[/bold].  Visit ",
+                "[bold][orange1]Note:[/orange1][/bold] A deployment will not run while "
+                "its work pool is [bold]paused[/bold]. [bold]Resume[/bold] "
+                "the work pool at",
                 Text(work_pool_url, style="link", justify="left"),
-                "to resume the work pool.",
                 soft_wrap=True,
-                sep="",
             )
 
 
