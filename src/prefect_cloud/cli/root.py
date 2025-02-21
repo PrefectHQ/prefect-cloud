@@ -192,43 +192,41 @@ async def deploy(
             progress.update(task, completed=True, description="Code deployed!")
 
         deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
-        run_prefix = "├─► Run: "
         run_cmd = f"prefect-cloud run {function}/{deployment_name}"
-        schedule_prefix = "├─► Schedule: "
-        schedule_cmd = f"prefect-cloud schedule {function}/{deployment_name} <SCHEDULE>"
-        blank_space_len = (
-            len(schedule_prefix + schedule_cmd) - len(run_prefix + run_cmd) + 1
-        )
-        deployed_msg = f"[bold]Deployed [cyan]{deployment_name}[/cyan]! 🎉[/bold]"
-        left_border = " ┌── "
-        right_border = " ─"
-
-        # Use schedule length directly since it's always longer
-        remaining_dashes = (
-            len(schedule_prefix + schedule_cmd)
-            - (len(left_border) + len(right_border))
-            - len(f"Deployed {deployment_name}! 🎉")
-            + 1
+        schedule_cmd = (
+            f"prefect-cloud schedule {function}/{deployment_name} '<CRON SCHEDULE>'"
         )
 
         app.console.print(
-            f"{left_border}{deployed_msg}{right_border}{'─' * remaining_dashes}┐\n",
-            f"{run_prefix}[bold][cyan]{run_cmd}[/cyan][/bold]{' ' * blank_space_len}│\n",
-            f"{schedule_prefix}[bold][cyan]{schedule_cmd}[/cyan][/bold] ┘ \n",
-            "└─► View:",
+            f"[bold]Deployed [cyan]{deployment_name}[/cyan] to Prefect Cloud! 🎉[/bold]\n",
+            "\n",
+            f"The repository [bold][cyan]{repo}[/cyan][/bold] will be cloned each time "
+            f"this deployment is run to execute the function "
+            f"[bold][cyan]{function}[/cyan][/bold] "
+            f"from the file [bold][cyan]{filepath}[/cyan][/bold].\n",
+            sep="",
+        )
+
+        app.console.print(
+            f"[bold]Run[/bold] it with: [bold][cyan]{run_cmd}[/cyan][/bold]\n",
+            f"[bold]Schedule[/bold] it with: [bold][cyan]{schedule_cmd}[/cyan][/bold]\n",
+            "[bold]View[/bold] it at: ",
             Text(deployment_url, style="link", justify="left"),
             soft_wrap=True,
+            sep="",
         )
 
         if work_pool.is_paused:
             work_pool_url = f"{ui_url}/work-pools"
             app.console.print(
-                "[bold][orange1]Note:[/orange1][/bold] Your managed work pool is",
-                "currently [bold]paused[/bold]. This will prevent the deployment "
-                "from running until it is [bold]resumed[/bold].  Visit",
+                "\n",
+                "[bold][orange1]Note:[/orange1][/bold] Your work pool is ",
+                "currently [bold]paused[/bold]. This will prevent the deployment ",
+                "from running until it is [bold]resumed[/bold].  Visit ",
                 Text(work_pool_url, style="link", justify="left"),
                 "to resume the work pool.",
                 soft_wrap=True,
+                sep="",
             )
 
 
