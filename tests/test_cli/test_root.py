@@ -233,10 +233,10 @@ def test_deploy_command_basic():
                     ],
                     expected_code=0,
                     expected_output_contains=[
-                        "Deployed test_function! 🎉",
-                        "Run: prefect-cloud run test_function/test_function",
-                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
-                        "View: https://ui.url/deployments/deployment/test-deployment-id",
+                        "Deployed test_function",
+                        "prefect-cloud run test_function/test_function",
+                        "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                        "https://ui.url/deployments/deployment/test-deployment-id",
                     ],
                 )
 
@@ -316,10 +316,11 @@ def test_deploy_with_env_vars():
                     ],
                     expected_code=0,
                     expected_output_contains=[
-                        "Deployed test_function! 🎉",
-                        "Run: prefect-cloud run test_function/test_function",
-                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
-                        "View: https://ui.url/deployments/deployment/test-deployment-id",
+                        "Deployed test_function",
+                        "prefect-cloud run test_function/test_function",
+                        "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                        "https://ui.url/deployments/deployment/test-deployment-id",
+                        "github.com/owner/repo",
                     ],
                 )
 
@@ -370,10 +371,11 @@ def test_deploy_with_private_repo_credentials():
                     ],
                     expected_code=0,
                     expected_output_contains=[
-                        "Deployed test_function! 🎉",
-                        "Run: prefect-cloud run test_function/test_function",
-                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
-                        "View: https://ui.url/deployments/deployment/test-deployment-id",
+                        "Deployed test_function",
+                        "prefect-cloud run test_function/test_function",
+                        "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                        "https://ui.url/deployments/deployment/test-deployment-id",
+                        "github.com/owner/repo",
                     ],
                 )
 
@@ -528,10 +530,11 @@ def test_deploy_with_dependencies():
                     ],
                     expected_code=0,
                     expected_output_contains=[
-                        "Deployed test_function! 🎉",
-                        "Run: prefect-cloud run test_function/test_function",
-                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
-                        "View: https://ui.url/deployments/deployment/test-deployment-id",
+                        "Deployed test_function",
+                        "prefect-cloud run test_function/test_function",
+                        "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                        "https://ui.url/deployments/deployment/test-deployment-id",
+                        "github.com/owner/repo",
                     ],
                 )
 
@@ -589,10 +592,11 @@ def test_deploy_with_requirements_file():
                     ],
                     expected_code=0,
                     expected_output_contains=[
-                        "Deployed test_function! 🎉",
-                        "Run: prefect-cloud run test_function/test_function",
-                        "Schedule: prefect-cloud schedule test_function/test_function <SCHEDULE>",
-                        "View: https://ui.url/deployments/deployment/test-deployment-id",
+                        "Deployed test_function",
+                        "prefect-cloud run test_function/test_function",
+                        "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                        "https://ui.url/deployments/deployment/test-deployment-id",
+                        "github.com/owner/repo",
                     ],
                 )
 
