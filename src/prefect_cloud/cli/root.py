@@ -356,7 +356,7 @@ async def ls():
             app.console.print(f"Unknown schedule type: {type(schedule.schedule)}")
             description = "Unknown"
 
-        return Text(f"{prefix} {description})", style=style)
+        return Text(f"{prefix} {description}", style=style)
 
     for deployment in context.deployments:
         scheduling = Text("\n").join(
