@@ -175,40 +175,91 @@ class TestGitHubContent:
         with pytest.raises(FileNotFound, match="File not found: NONEXISTENT.md in"):
             await github_ref.get_file_contents("NONEXISTENT.md")
 
-    def test_to_pull_step(self):
-        """Test generation of pull step configuration."""
+    def test_public_repo_pull_steps(self):
+        """Test generation of pull steps for public repo."""
         github_ref = GitHubRepo(
             owner="ExampleOwner",
             repo="example-repo",
             ref="main",
         )
 
-        pull_step = github_ref.to_pull_step()
-        assert pull_step == {
-            "prefect.deployments.steps.git_clone": {
-                "id": "git-clone",
-                "repository": "https://github.com/ExampleOwner/example-repo.git",
-                "branch": "main",
+        pull_steps = github_ref.public_repo_pull_steps()
+        assert pull_steps == [
+            {
+                "prefect.deployments.steps.git_clone": {
+                    "id": "git-clone",
+                    "repository": "https://github.com/ExampleOwner/example-repo.git",
+                    "branch": "main",
+                }
             }
-        }
+        ]
 
-    def test_to_pull_step_with_credentials(self):
-        """Test generation of pull step with credentials."""
+    def test_private_repo_via_block_pull_steps(self):
+        """Test generation of pull steps with credentials block."""
         github_ref = GitHubRepo(
             owner="ExampleOwner",
             repo="example-repo",
             ref="main",
         )
 
-        pull_step = github_ref.to_pull_step(credentials_block="test-creds")
-        assert pull_step == {
-            "prefect.deployments.steps.git_clone": {
-                "id": "git-clone",
-                "repository": "https://github.com/ExampleOwner/example-repo.git",
-                "branch": "main",
-                "access_token": "{{ prefect.blocks.secret.test-creds }}",
+        pull_steps = github_ref.private_repo_via_block_pull_steps("test-creds")
+        assert pull_steps == [
+            {
+                "prefect.deployments.steps.git_clone": {
+                    "id": "git-clone",
+                    "repository": "https://github.com/ExampleOwner/example-repo.git",
+                    "branch": "main",
+                    "access_token": "{{ prefect.blocks.secret.test-creds }}",
+                }
             }
-        }
+        ]
+
+    def test_private_repo_via_github_app_pull_steps(self):
+        """Test generation of pull steps using GitHub App installation token."""
+        github_ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
+            ref="main",
+        )
+
+        pull_steps = github_ref.private_repo_via_github_app_pull_steps()
+
+        # Should have two steps: get token and clone
+        assert len(pull_steps) == 2
+
+        # First step should be a run_shell_script to get the token
+        assert (
+            pull_steps[0]["prefect.deployments.steps.run_shell_script"]["id"]
+            == "get-github-token"
+        )
+        assert "script" in pull_steps[0]["prefect.deployments.steps.run_shell_script"]
+
+        # Second step should be a git_clone using the token in the URL
+        clone_step = pull_steps[1]["prefect.deployments.steps.git_clone"]
+        assert clone_step["id"] == "git-clone"
+        assert clone_step["branch"] == "main"
+        assert (
+            "https://x-access-token:{{ get-github-token.stdout }}@github.com/ExampleOwner/example-repo.git"
+            == clone_step["repository"]
+        )
+
+    def test_get_token_command(self):
+        """Test generation of the shell command to retrieve GitHub token."""
+        github_ref = GitHubRepo(
+            owner="ExampleOwner",
+            repo="example-repo",
+            ref="main",
+        )
+
+        command = github_ref.get_token_command()
+
+        # Check that it contains necessary components
+        assert 'owner=\\"ExampleOwner\\"' in command
+        assert 'repository=\\"example-repo\\"' in command
+        assert "prefect_api_url" in command
+        assert "prefect_api_key" in command
+        assert "urllib.request.Request" in command
+        assert "/integrations/github/token" in command
 
 
 @pytest.fixture
