@@ -19,13 +19,17 @@ async def setup():
     app.console.print("Setting up Prefect Cloud GitHub integration...")
     async with await get_prefect_cloud_client() as client:
         await install_github_app_interactively(client)
-    exit_with_success("Setup complete!")
+        repos = await client.get_github_repositories()
+        repos_list = "\n".join([f"  - {repo}" for repo in repos])
+        exit_with_success(
+            f"Setup complete! You can now deploy from the following repositories:\n{repos_list}"
+        )
 
 
 @github_app.command()
 async def ls():
     """
-    Initialize a new GitHub integration.
+    List GitHub repositories connected to Prefect Cloud.
     """
     async with await get_prefect_cloud_client() as client:
         repos = await client.get_github_repositories()
@@ -36,5 +40,6 @@ async def ls():
                 "Configure the Prefect Cloud GitHub integration with `prefect-cloud github setup`."
             )
 
+        app.console.print("You can deploy from the following repositories:")
         for repo in repos:
-            app.console.print(repo)
+            app.console.print(f"  - {repo}")
