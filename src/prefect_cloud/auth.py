@@ -203,6 +203,8 @@ async def key_is_valid(api_key: str) -> bool:
 
 @contextmanager
 def login_server() -> Generator[Any, None, None]:
+    """Runs a server to handle the login callback"""
+
     class LoginHandler(CallbackServerHandler):
         def process_get(self, query_params: dict[str, list[str]]) -> str | None:
             return query_params.get("key", [""])[0] or None
@@ -210,7 +212,6 @@ def login_server() -> Generator[Any, None, None]:
         def process_post(self, data: dict[str, Any]) -> str | None:
             return data.get("api_key") or None
 
-    """Runs a server to handle the login callback"""
     with callback_server(handler_class=LoginHandler) as callback_ctx:
         yield callback_ctx
 
