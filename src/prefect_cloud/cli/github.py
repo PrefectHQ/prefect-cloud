@@ -14,7 +14,7 @@ app.add_typer(github_app, name="github", rich_help_panel="Code Source")
 @github_app.command()
 async def setup():
     """
-    Initialize a new GitHub integration.
+    Setup Prefect Cloud GitHub integration
     """
     app.console.print("Setting up Prefect Cloud GitHub integration...")
     async with await get_prefect_cloud_client() as client:
