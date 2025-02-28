@@ -1,11 +1,17 @@
+import os
 import subprocess
+import threading
+import webbrowser
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from httpx import AsyncClient
 
+from prefect_cloud.auth import CLOUD_UI_URL, get_account_id
 from prefect_cloud.cli.utilities import exit_with_error
+from prefect_cloud.client import PrefectCloudClient
+from prefect_cloud.utilities.callback import callback_server
 
 
 class FileNotFound(Exception):
@@ -183,3 +189,43 @@ def get_local_repo_urls() -> list[str]:
         return all_urls
     except (subprocess.CalledProcessError, ValueError):
         return []
+
+
+def _get_prefect_cloud_github_app() -> str:
+    """Get the Github app name based on environment"""
+
+    env = os.environ.get("CLOUD_ENV")
+
+    if env in ("prd", "prod", None):
+        github_app_name = "prefect-cloud"
+    elif env == "stg":
+        github_app_name = "prefect-cloud-stg"
+    elif env == "dev":
+        github_app_name = "prefect-cloud-dev"
+    elif env == "lcl":
+        github_app_name = "prefect-cloud-lcl"
+    else:
+        raise ValueError(f"Invalid CLOUD_ENV: {env}")
+
+    return github_app_name
+
+
+async def install_github_app_interactively(client: PrefectCloudClient) -> None:
+    """Interactively install the Prefect Cloud GitHub app."""
+
+    with callback_server() as callback_ctx:
+        account_id = await get_account_id()
+        github_app_name = _get_prefect_cloud_github_app()
+
+        cloud_callback_url = f"{CLOUD_UI_URL}/account/{account_id}/integrations/success?callback={quote(callback_ctx.url)}&type=github"
+
+        state_token = await client.get_github_state_token(
+            redirect_url=cloud_callback_url
+        )
+        install_app_url = f"https://github.com/apps/{github_app_name}/installations/new?state={state_token}"
+
+        threading.Thread(
+            target=webbrowser.open_new_tab, args=(install_app_url,), daemon=True
+        ).start()
+
+        callback_ctx.wait_for_callback()

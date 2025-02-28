@@ -18,6 +18,7 @@ from prefect_cloud.schemas.responses import DeploymentResponse
 
 PREFECT_API_KEY = "test_key"
 PREFECT_API_URL = "https://api.prefect.cloud/api/accounts/123/workspaces/456"
+PREFECT_ACCOUNT_URL = "https://api.prefect.cloud/api/accounts/123"
 
 
 @pytest.fixture
@@ -235,3 +236,98 @@ async def test_get_default_base_job_template_for_managed_work_pool_no_template(
     result = await client.get_default_base_job_template_for_managed_work_pool()
 
     assert result is None
+
+
+async def test_account_url(client: PrefectCloudClient):
+    """Test that the account_url property correctly extracts the account URL from the workspace URL."""
+    assert client.account_url == PREFECT_ACCOUNT_URL
+
+
+async def test_account_request(client: PrefectCloudClient, respx_mock: respx.Router):
+    """Test that account_request makes requests to the account URL."""
+    test_data = {"test": "data"}
+
+    # Setup mock to respond to the account-level endpoint
+    respx_mock.post(f"{PREFECT_ACCOUNT_URL}/test/endpoint").mock(
+        return_value=Response(200, json=test_data)
+    )
+
+    # Make the request
+    response = await client.account_request("POST", "test/endpoint")
+
+    # Verify the response
+    assert response.status_code == 200
+    assert response.json() == test_data
+
+
+async def test_get_github_state_token(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that get_github_state_token correctly returns a state token."""
+    test_token = "test_state_token"
+    test_redirect_url = "https://example.com/callback"
+
+    respx_mock.post(f"{PREFECT_ACCOUNT_URL}/integrations/github/state-token").mock(
+        return_value=Response(200, json={"state_token": test_token})
+    )
+
+    result = await client.get_github_state_token(redirect_url=test_redirect_url)
+
+    assert result == test_token
+
+    # Check request was made with correct JSON data
+    # The redirect_url is passed directly as the json parameter, which means
+    # it gets JSON-serialized (with quotes) in the request body
+    assert len(respx_mock.calls) == 1
+    import json
+
+    expected_content = json.dumps(test_redirect_url).encode()
+    assert respx_mock.calls[0].request.content == expected_content
+
+
+async def test_get_github_token(client: PrefectCloudClient, respx_mock: respx.Router):
+    """Test that get_github_token correctly returns a GitHub token."""
+    test_token = "github_access_token"
+    test_repo = "test-repo"
+    test_owner = "test-owner"
+
+    respx_mock.post(f"{PREFECT_ACCOUNT_URL}/integrations/github/token").mock(
+        return_value=Response(200, json={"token": test_token})
+    )
+
+    result = await client.get_github_token(repository=test_repo, owner=test_owner)
+    assert result == test_token
+
+    assert len(respx_mock.calls) == 1
+    import json
+
+    request_content = respx_mock.calls[0].request.content
+    request_json = json.loads(request_content.decode("utf-8"))
+    assert request_json == {"repository": test_repo, "owner": test_owner}
+
+
+async def test_get_github_repositories(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that get_github_repositories correctly returns a list of repositories."""
+    test_repos = ["repo1", "repo2", "repo3"]
+    respx_mock.get(f"{PREFECT_ACCOUNT_URL}/integrations/github/repositories").mock(
+        return_value=Response(200, json={"repositories": test_repos})
+    )
+
+    result = await client.get_github_repositories()
+
+    assert result == test_repos
+
+
+async def test_get_github_repositories_error(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that get_github_repositories returns an empty list when the request fails."""
+    respx_mock.get(f"{PREFECT_ACCOUNT_URL}/integrations/github/repositories").mock(
+        return_value=Response(404)
+    )
+
+    result = await client.get_github_repositories()
+
+    assert result == []

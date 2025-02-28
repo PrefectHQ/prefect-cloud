@@ -43,6 +43,88 @@ class PrefectCloudClient(httpx.AsyncClient):
         httpx_settings.setdefault("base_url", api_url)
         super().__init__(**httpx_settings)
 
+    @property
+    def account_url(self) -> str:
+        """
+        Extract the account-level URL from the workspace URL.
+
+        For URLs like "https://api.prefect.cloud/api/accounts/123/workspaces/456",
+        returns "https://api.prefect.cloud/api/accounts/123"
+        """
+        base_url = str(self.base_url)
+        if "workspaces/" in base_url:
+            return base_url.split("workspaces/")[0].rstrip("/")
+        return base_url
+
+    async def account_request(
+        self, method: HTTP_METHODS, path: str, **kwargs: Any
+    ) -> httpx.Response:
+        """
+        Make a request to an account-level endpoint.
+
+        Args:
+            method: HTTP method to use
+            path: Path to append to the account URL
+            **kwargs: Additional arguments to pass to the request
+
+        Returns:
+            The HTTP response
+        """
+        url = f"{self.account_url}/{path.lstrip('/')}"
+        return await self.request(method, url, **kwargs)
+
+    async def get_github_state_token(self, redirect_url: str | None = None) -> str:
+        """
+        Get a state token for GitHub integration.
+
+        Returns:
+            The state token
+        """
+        response = await self.account_request(
+            "POST", "integrations/github/state-token", json=redirect_url
+        )
+        response.raise_for_status()
+        return response.json()["state_token"]
+
+    async def get_github_token(self, repository: str, owner: str) -> str | None:
+        """
+        Get a GitHub token for a specific repository.
+
+        Args:
+            repository: The GitHub repository name
+            owner: The GitHub repository owner
+
+        Returns:
+            The response data
+        """
+        response = await self.account_request(
+            "POST",
+            "integrations/github/token",
+            json={"repository": repository, "owner": owner},
+        )
+
+        response.raise_for_status()
+
+        return response.json()["token"]
+
+    async def get_github_repositories(self) -> list[str]:
+        """
+        Get a list of GitHub repositories that the account has access to.
+
+        Returns:
+            A list of repository names
+        """
+        response = await self.account_request(
+            "GET",
+            "integrations/github/repositories",
+        )
+        try:
+            response.raise_for_status()
+        except HTTPStatusError:
+            return []
+
+        return response.json()["repositories"]
+
     async def read_managed_work_pools(
         self,
     ) -> list["WorkPool"]:
@@ -239,7 +321,7 @@ class PrefectCloudClient(httpx.AsyncClient):
     async def get_most_recent_block_schema_for_block_type(
         self,
         block_type_id: "UUID",
-    ) -> "BlockSchema | None":
+    ) -> BlockSchema | None:
         """
         Fetches the most recent block schema for a specified block type ID.
 
@@ -264,7 +346,6 @@ class PrefectCloudClient(httpx.AsyncClient):
             response.raise_for_status()
         except HTTPStatusError:
             raise
-        from prefect_cloud.schemas.objects import BlockSchema
 
         return next(iter(validate_list(BlockSchema, response.json())), None)
 
