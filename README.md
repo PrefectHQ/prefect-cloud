@@ -84,6 +84,15 @@ prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
 ```
 
 **From a Private Repository**
+
+*(Recommended!)*
+Install the Prefect Cloud Github App into the repository you want to deploy from. 
+This will allow you to deploy from private repositories without needing to provide a personal access token.
+```bash
+prefect-cloud github setup
+```
+
+Alternatively, you can provide a personal access token on each deploy:
 ```bash
 prefect-cloud deploy ... --from <private source repo URL> --credentials GITHUB_TOKEN
 ```
