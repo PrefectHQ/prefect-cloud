@@ -1,11 +1,17 @@
+import os
 import subprocess
+import threading
+import webbrowser
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from httpx import AsyncClient
 
+from prefect_cloud.auth import CLOUD_UI_URL, get_account_id
 from prefect_cloud.cli.utilities import exit_with_error
+from prefect_cloud.client import PrefectCloudClient
+from prefect_cloud.utilities.callback import callback_server
 
 
 class FileNotFound(Exception):
@@ -102,18 +108,70 @@ class GitHubRepo:
             response.raise_for_status()
             return response.text
 
-    def to_pull_step(self, credentials_block: str | None = None) -> dict[str, Any]:
-        pull_step_kwargs = {
-            "id": "git-clone",
-            "repository": self.clone_url,
-            "branch": self.ref,
-        }
-        if credentials_block:
-            pull_step_kwargs["access_token"] = (
-                "{{ prefect.blocks.secret." + credentials_block + " }}"
-            )
+    def public_repo_pull_steps(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "prefect.deployments.steps.git_clone": {
+                    "id": "git-clone",
+                    "repository": self.clone_url,
+                    "branch": self.ref,
+                }
+            }
+        ]
 
-        return {"prefect.deployments.steps.git_clone": pull_step_kwargs}
+    def private_repo_via_block_pull_steps(
+        self, credentials_block: str
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "prefect.deployments.steps.git_clone": {
+                    "id": "git-clone",
+                    "repository": self.clone_url,
+                    "branch": self.ref,
+                    "access_token": "{{ prefect.blocks.secret."
+                    + credentials_block
+                    + " }}",
+                }
+            }
+        ]
+
+    def private_repo_via_github_app_pull_steps(self) -> list[dict[str, Any]]:
+        clone_url = self.clone_url.replace(
+            "https://", "https://x-access-token:{{ get-github-token.stdout }}@"
+        )
+        return [
+            # Get GitHub App installation token
+            {
+                "prefect.deployments.steps.run_shell_script": {
+                    "id": "get-github-token",
+                    "script": self.get_token_command(),
+                }
+            },
+            # Clone Step
+            {
+                "prefect.deployments.steps.git_clone": {
+                    "id": "git-clone",
+                    "repository": clone_url,
+                    "branch": self.ref,
+                }
+            },
+        ]
+
+    def get_token_command(self) -> str:
+        return (
+            r'python -c "import os, urllib.request, urllib.parse, json; '
+            f'owner=\\"{self.owner}\\"; '
+            f'repository=\\"{self.repo}\\"; '
+            r"prefect_api_url=os.environ.get(\"PREFECT_API_URL\", \"\"); "
+            r"base_url=prefect_api_url.split(\"/workspaces/\")[0] if prefect_api_url and \"/workspaces/\" in prefect_api_url else prefect_api_url; "
+            r"prefect_api_key=os.environ.get(\"PREFECT_API_KEY\", \"\"); "
+            r"req=urllib.request.Request("
+            r"f\"{base_url}/integrations/github/token\", "
+            r"data=json.dumps({\"owner\": owner, \"repository\": repository}).encode(), "
+            r"headers={\"Authorization\": f\"Bearer {prefect_api_key}\", \"Content-Type\": \"application/json\"}, "
+            r"method=\"POST\"); "
+            r'print(json.loads(urllib.request.urlopen(req).read())[\"token\"])"'
+        )
 
 
 def translate_to_http(url: str) -> str:
@@ -183,3 +241,43 @@ def get_local_repo_urls() -> list[str]:
         return all_urls
     except (subprocess.CalledProcessError, ValueError):
         return []
+
+
+def _get_prefect_cloud_github_app() -> str:
+    """Get the Github app name based on environment"""
+
+    env = os.environ.get("CLOUD_ENV")
+
+    if env in ("prd", "prod", None):
+        github_app_name = "prefect-cloud"
+    elif env == "stg":
+        github_app_name = "prefect-cloud-stg"
+    elif env == "dev":
+        github_app_name = "prefect-cloud-dev"
+    elif env == "lcl":
+        github_app_name = "prefect-cloud-lcl"
+    else:
+        raise ValueError(f"Invalid CLOUD_ENV: {env}")
+
+    return github_app_name
+
+
+async def install_github_app_interactively(client: PrefectCloudClient) -> None:
+    """Interactively install the Prefect Cloud GitHub app."""
+
+    with callback_server() as callback_ctx:
+        account_id = await get_account_id()
+        github_app_name = _get_prefect_cloud_github_app()
+
+        cloud_callback_url = f"{CLOUD_UI_URL}/account/{account_id}/integrations/success?callback={quote(callback_ctx.url)}&type=github"
+
+        state_token = await client.get_github_state_token(
+            redirect_url=cloud_callback_url
+        )
+        install_app_url = f"https://github.com/apps/{github_app_name}/installations/new?state={state_token}"
+
+        threading.Thread(
+            target=webbrowser.open_new_tab, args=(install_app_url,), daemon=True
+        ).start()
+
+        callback_ctx.wait_for_callback()
