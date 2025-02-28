@@ -37,7 +37,7 @@ async def ls():
         if not repos:
             exit_with_error(
                 "No repositories found! "
-                "Configure the Prefect Cloud GitHub integration with `prefect-cloud github setup`."
+                "Install the Prefect Cloud GitHub App with `prefect-cloud github setup`."
             )
 
         app.console.print("You can deploy from the following repositories:")

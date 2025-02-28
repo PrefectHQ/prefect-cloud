@@ -86,24 +86,33 @@ class PrefectCloudClient(httpx.AsyncClient):
         response.raise_for_status()
         return response.json()["state_token"]
 
-    async def get_github_token(self, repository: str, owner: str) -> str | None:
+    async def get_github_token(
+        self,
+        owner: str,
+        repository: str,
+    ) -> str | None:
         """
         Get a GitHub token for a specific repository.
 
         Args:
-            repository: The GitHub repository name
             owner: The GitHub repository owner
+            repository: The GitHub repository name
 
         Returns:
-            The response data
+            The GitHub token or None
         """
-        response = await self.account_request(
-            "POST",
-            "integrations/github/token",
-            json={"repository": repository, "owner": owner},
-        )
-
-        response.raise_for_status()
+        try:
+            response = await self.account_request(
+                "POST",
+                "integrations/github/token",
+                json={
+                    "owner": owner,
+                    "repository": repository,
+                },
+            )
+            response.raise_for_status()
+        except HTTPStatusError:
+            return None
 
         return response.json()["token"]
 

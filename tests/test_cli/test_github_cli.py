@@ -93,8 +93,9 @@ def test_github_ls_no_repositories(mock_outgoing_calls):
         command=["github", "ls"],
         expected_code=1,
         expected_output_contains=[
-            "No repositories found! Configure the Prefect Cloud GitHub integration with",
-            "`prefect-cloud github setup`.",
+            "No repositories found!",
+            "Install the Prefect Cloud GitHub App with `prefect-cloud",
+            "github setup`.",
         ],
     )
 
