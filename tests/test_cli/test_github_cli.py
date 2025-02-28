@@ -18,10 +18,10 @@ def mock_outgoing_calls(monkeypatch):
         return context_manager
 
     monkeypatch.setattr(
-        "prefect_cloud.cli.code_sources.install_github_app_interactively", AsyncMock()
+        "prefect_cloud.cli.github.install_github_app_interactively", AsyncMock()
     )
     monkeypatch.setattr(
-        "prefect_cloud.cli.code_sources.get_prefect_cloud_client", mock_get_client
+        "prefect_cloud.cli.github.get_prefect_cloud_client", mock_get_client
     )
 
     return install_mock, client_mock
