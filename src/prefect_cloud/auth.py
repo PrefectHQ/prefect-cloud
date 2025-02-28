@@ -1,21 +1,19 @@
-import json
 import os
-import socket
 import threading
 import webbrowser
 from contextlib import asynccontextmanager, contextmanager
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from queue import Queue
 from typing import Any, AsyncGenerator, Generator, Sequence
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import quote
 from uuid import UUID
 
 import toml
 from pydantic import BaseModel, TypeAdapter
 
 from prefect_cloud.client import PrefectCloudClient, SyncPrefectCloudClient
+from prefect_cloud.utilities.callback import CallbackServerHandler, callback_server
 from prefect_cloud.utilities.tui import prompt_select_from_list
+from prefect_cloud.utilities.urls import extract_account_id, extract_workspace_id
 
 
 def _get_cloud_urls() -> tuple[str, str]:
@@ -112,6 +110,24 @@ def logout():
     remove_cloud_profile()
 
 
+async def get_account_id() -> UUID:
+    """Gets the account ID from the current cloud profile"""
+    _, api_url, _ = await get_cloud_urls_or_login()
+    account_id = extract_account_id(api_url)
+    if not account_id:
+        raise ValueError("No account ID found")
+    return account_id
+
+
+async def get_workspace_id() -> UUID:
+    """Gets the workspace ID from the current cloud profile"""
+    _, api_url, _ = await get_cloud_urls_or_login()
+    workspace_id = extract_workspace_id(api_url)
+    if not workspace_id:
+        raise ValueError("No workspace ID found")
+    return workspace_id
+
+
 @asynccontextmanager
 async def cloud_client(api_key: str) -> AsyncGenerator[PrefectCloudClient, None]:
     """Creates a client for the Prefect Cloud API"""
@@ -185,77 +201,34 @@ async def key_is_valid(api_key: str) -> bool:
         return response.status_code == 200
 
 
+@contextmanager
+def login_server() -> Generator[Any, None, None]:
+    """Runs a server to handle the login callback"""
+
+    class LoginHandler(CallbackServerHandler):
+        def process_get(self, query_params: dict[str, list[str]]) -> str | None:
+            return query_params.get("key", [""])[0] or None
+
+        def process_post(self, data: dict[str, Any]) -> str | None:
+            return data.get("api_key") or None
+
+    with callback_server(handler_class=LoginHandler) as callback_ctx:
+        yield callback_ctx
+
+
 def login_interactively() -> str | None:
     """Logs the user into Prefect Cloud interactively"""
-    result_queue: Queue[str | None] = Queue()
-    with login_server(result_queue) as uri:
-        login_url = f"{CLOUD_UI_URL}/auth/client?callback={quote(uri)}&g=true"
+
+    with login_server() as callback_ctx:
+        login_url = (
+            f"{CLOUD_UI_URL}/auth/client?callback={quote(callback_ctx.url)}&g=true"
+        )
 
         threading.Thread(
             target=webbrowser.open_new_tab, args=(login_url,), daemon=True
         ).start()
 
-        return result_queue.get()
-
-
-@contextmanager
-def login_server(result_queue: Queue[str | None]) -> Generator[str, None, None]:
-    """Runs a local server to handle the callback from Prefect Cloud"""
-
-    class LoginHandler(BaseHTTPRequestHandler):
-        def log_message(self, format: str, *args: Any) -> None:
-            pass
-
-        def add_cors_headers(self) -> None:
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "*")
-            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-
-        def do_OPTIONS(self) -> None:
-            self.send_response(200)
-            self.add_cors_headers()
-            self.end_headers()
-
-        def do_GET(self) -> None:
-            query_params = parse_qs(urlparse(self.path).query)
-            api_key = query_params.get("key", [""])[0] or None
-
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"""
-                <script>
-                if (window.opener) {
-                    window.opener.postMessage('auth-complete', '*')
-                }
-                </script>
-                <p>You can close this window.</p>
-            """)
-            result_queue.put(api_key or None)
-
-        def do_POST(self):
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            data = json.loads(body)
-            api_key = data.get("api_key")
-
-            self.send_response(200)
-            self.add_cors_headers()
-            self.end_headers()
-            self.wfile.write(b"{}")
-            result_queue.put(api_key or None)
-
-    with socket.socket() as sock:
-        sock.bind(("", 0))
-        port = sock.getsockname()[1]
-
-    server = HTTPServer(("localhost", port), LoginHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-
-    try:
-        yield f"http://localhost:{port}"
-    finally:
-        server.server_close()
+        return callback_ctx.wait_for_callback()
 
 
 async def me(api_key: str) -> Me:

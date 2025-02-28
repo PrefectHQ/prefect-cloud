@@ -25,6 +25,17 @@ def exit_with_error(
     raise typer.Exit(1)
 
 
+def exit_with_success(
+    message: str | Exception, progress: Progress | None = None
+) -> NoReturn:
+    from prefect_cloud.cli.root import app
+
+    if progress:
+        progress.stop()
+    app.console.print(message, style="green")
+    raise typer.Exit(0)
+
+
 def with_cli_exception_handling(fn: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:

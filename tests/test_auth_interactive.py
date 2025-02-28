@@ -1,4 +1,3 @@
-from queue import Queue
 from unittest.mock import MagicMock, Mock
 
 import httpx
@@ -13,12 +12,12 @@ from prefect_cloud.auth import (
 
 def test_login_server_handles_cors_preflight():
     """login_server should handle CORS preflight requests."""
-    with login_server(Queue()) as callback_url:
-        response = httpx.options(callback_url)
+    with login_server() as callback_ctx:
+        response = httpx.options(callback_ctx.url)
         assert response.status_code == 200
         assert response.headers["Access-Control-Allow-Origin"] == "*"
         assert response.headers["Access-Control-Allow-Headers"] == "*"
-        assert response.headers["Access-Control-Allow-Methods"] == "POST, OPTIONS"
+        assert response.headers["Access-Control-Allow-Methods"] == "GET, POST, OPTIONS"
 
 
 @pytest.fixture

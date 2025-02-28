@@ -255,6 +255,9 @@ def test_deploy_private_repo_without_credentials():
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
 
+        # Mock GitHub token retrieval to return None (not installed)
+        client.get_github_token = AsyncMock(return_value=None)
+
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
             mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
 
@@ -273,7 +276,17 @@ def test_deploy_private_repo_without_credentials():
                         "prefect",
                     ],
                     expected_code=1,
-                    expected_output_contains=("Unable to access file in Github."),
+                    expected_output_contains=[
+                        "Unable to access file",
+                        "src/flows/test.py",
+                        "owner/repo",
+                        "Make sure the file exists",
+                        "accessible",
+                        "private repository",
+                        "GitHub App",
+                        "prefect-cloud github setup",
+                        "--credentials",
+                    ],
                 )
 
 
@@ -290,47 +303,64 @@ def test_deploy_with_env_vars():
         )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
 
+        # Mock GitHub token retrieval to return None (using public repo path)
+        client.get_github_token = AsyncMock(return_value=None)
+
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
             mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
 
+            # Mock the pull steps generation to return a simple single step
             with patch(
-                "prefect_cloud.github.GitHubRepo.get_file_contents"
-            ) as mock_content:
-                mock_content.return_value = textwrap.dedent("""
-                    def test_function():
-                        pass
-                """).lstrip()
-
-                invoke_and_assert(
-                    command=[
-                        "deploy",
-                        "test.py:test_function",
-                        "--from",
-                        "github.com/owner/repo",
-                        "--with",
-                        "prefect",
-                        "--env",
-                        "API_KEY=secret",
-                        "--env",
-                        "DEBUG=true",
-                    ],
-                    expected_code=0,
-                    expected_output_contains=[
-                        "Deployed test_function",
-                        "prefect-cloud run test_function/test_function",
-                        "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
-                        "https://ui.url/deployments/deployment/test-deployment-id",
-                        "github.com/owner/repo",
-                    ],
-                )
-
-                # Verify environment variables were passed correctly
-                client.create_managed_deployment.assert_called_once()
-                job_variables = client.create_managed_deployment.call_args[1][
-                    "job_variables"
+                "prefect_cloud.github.GitHubRepo.public_repo_pull_steps"
+            ) as mock_pull_steps:
+                mock_pull_steps.return_value = [
+                    {
+                        "prefect.deployments.steps.git_clone": {
+                            "id": "git-clone",
+                            "repository": "https://github.com/owner/repo.git",
+                            "branch": "main",
+                        }
+                    }
                 ]
-                assert job_variables["env"]["API_KEY"] == "secret"
-                assert job_variables["env"]["DEBUG"] == "true"
+
+                with patch(
+                    "prefect_cloud.github.GitHubRepo.get_file_contents"
+                ) as mock_content:
+                    mock_content.return_value = textwrap.dedent("""
+                        def test_function():
+                            pass
+                    """).lstrip()
+
+                    invoke_and_assert(
+                        command=[
+                            "deploy",
+                            "test.py:test_function",
+                            "--from",
+                            "github.com/owner/repo",
+                            "--with",
+                            "prefect",
+                            "--env",
+                            "API_KEY=secret",
+                            "--env",
+                            "DEBUG=true",
+                        ],
+                        expected_code=0,
+                        expected_output_contains=[
+                            "Deployed test_function",
+                            "prefect-cloud run test_function/test_function",
+                            "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                            "https://ui.url/deployments/deployment/test-deployment-id",
+                            "github.com/owner/repo",
+                        ],
+                    )
+
+                    # Verify environment variables were passed correctly
+                    client.create_managed_deployment.assert_called_once()
+                    job_variables = client.create_managed_deployment.call_args[1][
+                        "job_variables"
+                    ]
+                    assert job_variables["env"]["API_KEY"] == "secret"
+                    assert job_variables["env"]["DEBUG"] == "true"
 
 
 def test_deploy_with_private_repo_credentials():
@@ -346,6 +376,9 @@ def test_deploy_with_private_repo_credentials():
         )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
         client.create_credentials_secret = AsyncMock()
+
+        # Mock GitHub token retrieval to return None (not installed)
+        client.get_github_token = AsyncMock(return_value=None)
 
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
             mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
@@ -379,9 +412,9 @@ def test_deploy_with_private_repo_credentials():
                     ],
                 )
 
-                # Verify credentials were stored
+                # Verify credentials were stored with new parameter naming
                 client.create_credentials_secret.assert_called_once_with(
-                    "owner-repo-credentials", "github_token"
+                    name="owner-repo-credentials", credentials="github_token"
                 )
 
 
@@ -506,55 +539,72 @@ def test_deploy_with_dependencies():
         )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
 
+        # Mock GitHub token retrieval to return None (using public repo path)
+        client.get_github_token = AsyncMock(return_value=None)
+
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
             mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
 
+            # Mock the pull steps generation to return a simple single step
             with patch(
-                "prefect_cloud.github.GitHubRepo.get_file_contents"
-            ) as mock_content:
-                mock_content.return_value = textwrap.dedent("""
-                    def test_function():
-                        pass
-                """).lstrip()
-
-                invoke_and_assert(
-                    command=[
-                        "deploy",
-                        "test.py:test_function",
-                        "--from",
-                        "github.com/owner/repo",
-                        "--with",
-                        "requests>=2",
-                        "--with",
-                        "pandas>=1",
-                    ],
-                    expected_code=0,
-                    expected_output_contains=[
-                        "Deployed test_function",
-                        "prefect-cloud run test_function/test_function",
-                        "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
-                        "https://ui.url/deployments/deployment/test-deployment-id",
-                        "github.com/owner/repo",
-                    ],
-                )
-
-                # Verify deployment was created with correct pull steps
-                client.create_managed_deployment.assert_called_once()
-                deployment = client.create_managed_deployment.call_args[1]
-
-                # We don't want to pass them as EXTRA_PIP_PACKAGES, because that happens
-                # before logging can be set up, so any problems with the dependencies
-                # will be obscured to users.
-                assert "pip_packages" not in deployment["job_variables"]
-
-                pull_steps = deployment["pull_steps"]
-                assert len(pull_steps) == 2
-                assert pull_steps[1] == {
-                    "prefect.deployments.steps.run_shell_script": {
-                        "directory": "{{ git-clone.directory }}",
-                        "script": "uv pip install 'requests>=2' 'pandas>=1'",
+                "prefect_cloud.github.GitHubRepo.public_repo_pull_steps"
+            ) as mock_pull_steps:
+                mock_pull_steps.return_value = [
+                    {
+                        "prefect.deployments.steps.git_clone": {
+                            "id": "git-clone",
+                            "repository": "https://github.com/owner/repo.git",
+                            "branch": "main",
+                        }
                     }
-                }
+                ]
+
+                with patch(
+                    "prefect_cloud.github.GitHubRepo.get_file_contents"
+                ) as mock_content:
+                    mock_content.return_value = textwrap.dedent("""
+                        def test_function():
+                            pass
+                    """).lstrip()
+
+                    invoke_and_assert(
+                        command=[
+                            "deploy",
+                            "test.py:test_function",
+                            "--from",
+                            "github.com/owner/repo",
+                            "--with",
+                            "requests>=2",
+                            "--with",
+                            "pandas>=1",
+                        ],
+                        expected_code=0,
+                        expected_output_contains=[
+                            "Deployed test_function",
+                            "prefect-cloud run test_function/test_function",
+                            "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                            "https://ui.url/deployments/deployment/test-deployment-id",
+                            "github.com/owner/repo",
+                        ],
+                    )
+
+                    # Verify deployment was created with correct pull steps
+                    client.create_managed_deployment.assert_called_once()
+                    deployment = client.create_managed_deployment.call_args[1]
+
+                    # We don't want to pass them as EXTRA_PIP_PACKAGES, because that happens
+                    # before logging can be set up, so any problems with the dependencies
+                    # will be obscured to users.
+                    assert "pip_packages" not in deployment["job_variables"]
+
+                    pull_steps = deployment["pull_steps"]
+                    assert len(pull_steps) == 2
+                    assert pull_steps[1] == {
+                        "prefect.deployments.steps.run_shell_script": {
+                            "directory": "{{ git-clone.directory }}",
+                            "script": "uv pip install 'requests>=2' 'pandas>=1'",
+                        }
+                    }
 
 
 def test_deploy_with_requirements_file():
@@ -570,43 +620,151 @@ def test_deploy_with_requirements_file():
         )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
 
+        # Mock GitHub token retrieval to return None (using public repo path)
+        client.get_github_token = AsyncMock(return_value=None)
+
         with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
             mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
 
+            # Mock the pull steps generation to return a simple single step
             with patch(
-                "prefect_cloud.github.GitHubRepo.get_file_contents"
-            ) as mock_content:
-                mock_content.return_value = textwrap.dedent("""
-                    def test_function():
-                        pass
-                """).lstrip()
-
-                invoke_and_assert(
-                    command=[
-                        "deploy",
-                        "test.py:test_function",
-                        "--from",
-                        "github.com/owner/repo",
-                        "--with-requirements",
-                        "requirements.txt",
-                    ],
-                    expected_code=0,
-                    expected_output_contains=[
-                        "Deployed test_function",
-                        "prefect-cloud run test_function/test_function",
-                        "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
-                        "https://ui.url/deployments/deployment/test-deployment-id",
-                        "github.com/owner/repo",
-                    ],
-                )
-
-                # Verify deployment was created with correct pull steps
-                client.create_managed_deployment.assert_called_once()
-                pull_steps = client.create_managed_deployment.call_args[1]["pull_steps"]
-                assert len(pull_steps) == 2
-                assert pull_steps[1] == {
-                    "prefect.deployments.steps.run_shell_script": {
-                        "directory": "{{ git-clone.directory }}",
-                        "script": "uv pip install -r requirements.txt",
+                "prefect_cloud.github.GitHubRepo.public_repo_pull_steps"
+            ) as mock_pull_steps:
+                mock_pull_steps.return_value = [
+                    {
+                        "prefect.deployments.steps.git_clone": {
+                            "id": "git-clone",
+                            "repository": "https://github.com/owner/repo.git",
+                            "branch": "main",
+                        }
                     }
-                }
+                ]
+
+                with patch(
+                    "prefect_cloud.github.GitHubRepo.get_file_contents"
+                ) as mock_content:
+                    mock_content.return_value = textwrap.dedent("""
+                        def test_function():
+                            pass
+                    """).lstrip()
+
+                    invoke_and_assert(
+                        command=[
+                            "deploy",
+                            "test.py:test_function",
+                            "--from",
+                            "github.com/owner/repo",
+                            "--with-requirements",
+                            "requirements.txt",
+                        ],
+                        expected_code=0,
+                        expected_output_contains=[
+                            "Deployed test_function",
+                            "prefect-cloud run test_function/test_function",
+                            "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                            "https://ui.url/deployments/deployment/test-deployment-id",
+                            "github.com/owner/repo",
+                        ],
+                    )
+
+                    # Verify deployment was created with correct pull steps
+                    client.create_managed_deployment.assert_called_once()
+                    pull_steps = client.create_managed_deployment.call_args[1][
+                        "pull_steps"
+                    ]
+                    assert len(pull_steps) == 2
+                    assert pull_steps[1] == {
+                        "prefect.deployments.steps.run_shell_script": {
+                            "directory": "{{ git-clone.directory }}",
+                            "script": "uv pip install -r requirements.txt",
+                        }
+                    }
+
+
+def test_deploy_with_github_app():
+    """Test deployment using GitHub App token"""
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+        client = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = client
+
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
+        client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
+
+        # Mock GitHub token retrieval to return a token (GitHub App installed)
+        github_token = "github-app-token-123"
+        client.get_github_token = AsyncMock(return_value=github_token)
+
+        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
+            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
+
+            # Mock the GitHub App pull steps generation
+            with patch(
+                "prefect_cloud.github.GitHubRepo.private_repo_via_github_app_pull_steps"
+            ) as mock_pull_steps:
+                mock_pull_steps.return_value = [
+                    {
+                        "prefect.deployments.steps.run_shell_script": {
+                            "id": "get-github-token",
+                            "script": "echo 'get-token-script'",
+                        }
+                    },
+                    {
+                        "prefect.deployments.steps.git_clone": {
+                            "id": "git-clone",
+                            "repository": "https://x-access-token:{{ get-github-token.stdout }}@github.com/owner/repo.git",
+                            "branch": "main",
+                        }
+                    },
+                ]
+
+                with patch(
+                    "prefect_cloud.github.GitHubRepo.get_file_contents"
+                ) as mock_content:
+                    # Mock that the file can be accessed with the GitHub App token
+                    mock_content.return_value = textwrap.dedent("""
+                        def test_function():
+                            pass
+                    """).lstrip()
+
+                    invoke_and_assert(
+                        command=[
+                            "deploy",
+                            "test.py:test_function",
+                            "--from",
+                            "github.com/owner/repo",
+                        ],
+                        expected_code=0,
+                        expected_output_contains=[
+                            "Deployed test_function",
+                            "prefect-cloud run test_function/test_function",
+                            "prefect-cloud schedule test_function/test_function '<CRON SCHEDULE>'",
+                            "https://ui.url/deployments/deployment/test-deployment-id",
+                            "github.com/owner/repo",
+                        ],
+                    )
+
+                    # Verify the GitHub App token was requested
+                    client.get_github_token.assert_called_once_with("owner", "repo")
+
+                    # Verify the file contents were fetched with the token
+                    mock_content.assert_called_once_with("test.py", github_token)
+
+                    # Verify deployment was created with correct GitHub App pull steps
+                    client.create_managed_deployment.assert_called_once()
+                    pull_steps = client.create_managed_deployment.call_args[1][
+                        "pull_steps"
+                    ]
+                    assert len(pull_steps) == 2
+                    assert (
+                        pull_steps[0]["prefect.deployments.steps.run_shell_script"][
+                            "id"
+                        ]
+                        == "get-github-token"
+                    )
+                    assert pull_steps[1]["prefect.deployments.steps.git_clone"][
+                        "repository"
+                    ].startswith("https://x-access-token")

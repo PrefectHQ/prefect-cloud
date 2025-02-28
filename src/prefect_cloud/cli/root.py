@@ -14,7 +14,11 @@ from prefect_cloud.cli.utilities import (
     process_key_value_pairs,
 )
 from prefect_cloud.dependencies import get_dependencies
-from prefect_cloud.github import FileNotFound, GitHubRepo, infer_repo_url
+from prefect_cloud.github import (
+    FileNotFound,
+    GitHubRepo,
+    infer_repo_url,
+)
 from prefect_cloud.schemas.objects import (
     CronSchedule,
     DeploymentSchedule,
@@ -115,21 +119,51 @@ async def deploy(
             transient=True,
         ) as progress:
             task = progress.add_task("Inspecting code...", total=None)
-
-            # Pre-process CLI arguments
             env_vars = process_key_value_pairs(env, progress=progress)
-
-            # Get repository info and file contents
+            pull_steps = []
             github_ref = GitHubRepo.from_url(repo)
+
+            # Get file contents
             try:
-                raw_contents = await github_ref.get_file_contents(filepath, credentials)
+                # via `--credentials`
+                if credentials:
+                    raw_contents = await github_ref.get_file_contents(
+                        filepath, credentials
+                    )
+                    block_name = safe_block_name(
+                        f"{github_ref.owner}-{github_ref.repo}-credentials"
+                    )
+                    await client.create_credentials_secret(
+                        name=block_name, credentials=credentials
+                    )
+                    pull_steps.extend(
+                        github_ref.private_repo_via_block_pull_steps(block_name)
+                    )
+                # via GitHub App installation
+                elif credentials_via_app := await client.get_github_token(
+                    github_ref.owner, github_ref.repo
+                ):
+                    raw_contents = await github_ref.get_file_contents(
+                        filepath, credentials_via_app
+                    )
+                    pull_steps.extend(
+                        github_ref.private_repo_via_github_app_pull_steps()
+                    )
+                # Otherwise assume public repo
+                else:
+                    raw_contents = await github_ref.get_file_contents(filepath)
+                    pull_steps.extend(github_ref.public_repo_pull_steps())
             except FileNotFound:
                 exit_with_error(
-                    "Unable to access file in Github. "
-                    "If it's in a private repository retry with `--credentials`.",
+                    f"Unable to access file {filepath} in {github_ref.owner}/{github_ref.repo}. "
+                    f"Make sure the file exists and is accessible.\n"
+                    f"If this is a private repository, you can:\n"
+                    f"1. Install the Prefect Cloud GitHub App with `prefect-cloud github setup` (recommended)\n"
+                    f"2. Pass credentials with `--credentials` flag",
                     progress=progress,
                 )
 
+            # Process function parameters
             try:
                 parameter_schema = get_parameter_schema_from_content(
                     raw_contents, function
@@ -140,20 +174,13 @@ async def deploy(
                     progress=progress,
                 )
 
+            # Provision infrastructure
             progress.update(task, description="Provisioning infrastructure...")
             work_pool = await client.ensure_managed_work_pool()
 
-            credentials_name = None
-            if credentials:
-                progress.update(task, description="Syncing credentials...")
-                credentials_name = safe_block_name(
-                    f"{github_ref.owner}-{github_ref.repo}-credentials"
-                )
-                await client.create_credentials_secret(credentials_name, credentials)
-
             progress.update(task, description="Deploying code...")
 
-            pull_steps = [github_ref.to_pull_step(credentials_name)]
+            # Create Deployment
             if dependencies:
                 quoted_dependencies = [
                     f"'{dependency}'" for dependency in get_dependencies(dependencies)
