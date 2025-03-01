@@ -1,4 +1,5 @@
 from uuid import UUID
+from typing import Any
 
 import typer
 import tzlocal
@@ -120,7 +121,7 @@ async def deploy(
         ) as progress:
             task = progress.add_task("Inspecting code...", total=None)
             env_vars = process_key_value_pairs(env, progress=progress)
-            pull_steps = []
+            pull_steps: list[dict[str, Any]] = []
             github_ref = GitHubRepo.from_url(repo)
 
             # Get file contents

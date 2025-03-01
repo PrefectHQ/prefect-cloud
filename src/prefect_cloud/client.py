@@ -720,7 +720,7 @@ class PrefectCloudClient(httpx.AsyncClient):
 
         return deployment_id
 
-    async def create_credentials_secret(self, name: str, credentials: str):
+    async def create_credentials_secret(self, name: str, credentials: str) -> None:
         try:
             secret_block_type = await self.read_block_type_by_slug("secret")
             secret_block_schema = (
@@ -739,6 +739,7 @@ class PrefectCloudClient(httpx.AsyncClient):
                     block_schema_id=secret_block_schema.id,
                 )
             )
+            return None
         except HTTPStatusError:
             raise
 
