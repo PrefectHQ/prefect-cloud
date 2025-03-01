@@ -231,6 +231,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         pull_steps: list[dict[str, Any]] | None = None,
         parameter_openapi_schema: dict[str, Any] | None = None,
         job_variables: dict[str, Any] | None = None,
+        parameters: dict[str, Any] | None = None,
     ) -> "UUID":
         """
         Create a deployment.
@@ -244,7 +245,7 @@ class PrefectCloudClient(httpx.AsyncClient):
             parameter_openapi_schema: OpenAPI schema for flow parameters
             job_variables: A dictionary of dot delimited infrastructure overrides that
                 will be applied at runtime
-
+            parameters: Default parameter values to pass to the flow at runtime
         Returns:
             the ID of the deployment in the backend
         """
@@ -261,6 +262,7 @@ class PrefectCloudClient(httpx.AsyncClient):
             pull_steps=pull_steps,
             parameter_openapi_schema=parameter_openapi_schema,
             job_variables=dict(job_variables or {}),
+            parameters=parameters or {},
         )
 
         json = deployment_create.model_dump(mode="json")
@@ -705,6 +707,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         pull_steps: list[dict[str, Any]],
         parameter_schema: ParameterSchema,
         job_variables: dict[str, Any] | None = None,
+        parameters: dict[str, Any] | None = None,
     ):
         flow_id = await self.create_flow_from_name(function)
 
@@ -716,6 +719,7 @@ class PrefectCloudClient(httpx.AsyncClient):
             pull_steps=pull_steps,
             parameter_openapi_schema=parameter_schema.model_dump_for_openapi(),
             job_variables=job_variables,
+            parameters=parameters,
         )
 
         return deployment_id
