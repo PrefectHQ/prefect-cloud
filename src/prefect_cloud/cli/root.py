@@ -99,7 +99,13 @@ async def deploy(
         help="Parameter default values in <NAME=VALUE> format (can be used multiple times)",
         default_factory=list,
     ),
-):
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress output",
+    ),
+) -> UUID:
     """
     Deploy a Python function to Prefect Cloud
 
@@ -125,6 +131,7 @@ async def deploy(
             SpinnerColumn(),
             TextColumn("[cyan]{task.description}"),
             transient=True,
+            disable=quiet,
         ) as progress:
             task = progress.add_task("Inspecting code...", total=None)
             env_vars = process_key_value_pairs(env, progress=progress)
@@ -236,35 +243,38 @@ async def deploy(
             f"prefect-cloud schedule {function}/{deployment_name} '<CRON SCHEDULE>'"
         )
 
-        app.console.print(
-            f"[bold]Deployed [cyan]{deployment_name}[/cyan] to Prefect Cloud! 🎉[/bold]\n",
-            "\n",
-            f"Runs of this deployment will "
-            f"clone [bold][cyan]{repo}[/cyan][/bold] to "
-            f"execute [bold][cyan]{function}[/cyan][/bold] ",
-            f"from [bold][cyan]{filepath}[/cyan][/bold].\n",
-            sep="",
-        )
-
-        app.console.print(
-            f"[bold]Run[/bold] it with: [bold][cyan]{run_cmd}[/cyan][/bold]\n",
-            f"[bold]Schedule[/bold] it with: [bold][cyan]{schedule_cmd}[/cyan][/bold]\n",
-            "[bold]View[/bold] it at: ",
-            Text(deployment_url, style="link", justify="left"),
-            soft_wrap=True,
-            sep="",
-        )
-
-        if work_pool.is_paused:
-            work_pool_url = f"{ui_url}/work-pools"
-            print()
+        if not quiet:
             app.console.print(
-                "[bold][orange1]Note:[/orange1][/bold] A deployment will not run while "
-                "its work pool is [bold]paused[/bold]. [bold]Resume[/bold] "
-                "the work pool at",
-                Text(work_pool_url, style="link", justify="left"),
-                soft_wrap=True,
+                f"[bold]Deployed [cyan]{deployment_name}[/cyan] to Prefect Cloud! 🎉[/bold]\n",
+                "\n",
+                f"Runs of this deployment will "
+                f"clone [bold][cyan]{repo}[/cyan][/bold] to "
+                f"execute [bold][cyan]{function}[/cyan][/bold] ",
+                f"from [bold][cyan]{filepath}[/cyan][/bold].\n",
+                sep="",
             )
+
+            app.console.print(
+                f"[bold]Run[/bold] it with: [bold][cyan]{run_cmd}[/cyan][/bold]\n",
+                f"[bold]Schedule[/bold] it with: [bold][cyan]{schedule_cmd}[/cyan][/bold]\n",
+                "[bold]View[/bold] it at: ",
+                Text(deployment_url, style="link", justify="left"),
+                soft_wrap=True,
+                sep="",
+            )
+
+            if work_pool.is_paused:
+                work_pool_url = f"{ui_url}/work-pools"
+                print()
+                app.console.print(
+                    "[bold][orange1]Note:[/orange1][/bold] A deployment will not run while "
+                    "its work pool is [bold]paused[/bold]. [bold]Resume[/bold] "
+                    "the work pool at",
+                    Text(work_pool_url, style="link", justify="left"),
+                    soft_wrap=True,
+                )
+
+        return deployment_id
 
 
 @app.command(rich_help_panel="Deploy")

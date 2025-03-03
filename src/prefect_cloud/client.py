@@ -708,7 +708,7 @@ class PrefectCloudClient(httpx.AsyncClient):
         parameter_schema: ParameterSchema,
         job_variables: dict[str, Any] | None = None,
         parameters: dict[str, Any] | None = None,
-    ):
+    ) -> UUID:
         flow_id = await self.create_flow_from_name(function)
 
         deployment_id = await self.create_deployment(
