@@ -39,6 +39,10 @@ class DeploymentCreate(BaseModel):
         default_factory=dict,
         description="Overrides to apply to flow run infrastructure at runtime.",
     )
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Default parameter values to pass to the flow at runtime.",
+    )
 
 
 class BlockDocumentCreate(BaseModel):

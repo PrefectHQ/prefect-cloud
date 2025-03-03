@@ -1,4 +1,5 @@
 from uuid import UUID
+from typing import Any
 
 import typer
 import tzlocal
@@ -91,6 +92,13 @@ async def deploy(
         rich_help_panel="Configuration",
         show_default=False,
     ),
+    parameters: list[str] = typer.Option(
+        ...,
+        "--parameter",
+        "-p",
+        help="Parameter default values in <NAME=VALUE> format (can be used multiple times)",
+        default_factory=list,
+    ),
 ):
     """
     Deploy a Python function to Prefect Cloud
@@ -120,7 +128,10 @@ async def deploy(
         ) as progress:
             task = progress.add_task("Inspecting code...", total=None)
             env_vars = process_key_value_pairs(env, progress=progress)
-            pull_steps = []
+            parameter_defaults = process_key_value_pairs(
+                parameters, progress=progress, as_json=True
+            )
+            pull_steps: list[dict[str, Any]] = []
             github_ref = GitHubRepo.from_url(repo)
 
             # Get file contents
@@ -214,6 +225,7 @@ async def deploy(
                 job_variables={
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
                 },
+                parameters=parameter_defaults,
             )
 
             progress.update(task, completed=True, description="Code deployed!")

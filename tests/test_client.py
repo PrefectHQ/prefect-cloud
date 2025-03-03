@@ -34,6 +34,7 @@ def mock_deployment() -> DeploymentResponse:
         name="test-deployment",
         work_pool_name="test-pool",
         schedules=[],
+        parameters={},
     )
 
 
