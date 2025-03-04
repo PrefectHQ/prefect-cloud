@@ -975,3 +975,106 @@ def test_deploy_programmatic_invocation():
                 assert deployment["deployment_name"] == "test_function"
                 assert deployment["filepath"] == "test.py"
                 assert deployment["function"] == "test_function"
+
+
+def test_deploy_with_custom_deployment_name():
+    """Test deployment with custom flow and deployment names"""
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+        client = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = client
+
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
+        client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
+
+        # Mock GitHub token retrieval to return None (using public repo path)
+        client.get_github_token = AsyncMock(return_value=None)
+
+        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
+            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
+
+            with patch(
+                "prefect_cloud.github.GitHubRepo.get_file_contents"
+            ) as mock_content:
+                mock_content.return_value = textwrap.dedent("""
+                    def test_function():
+                        pass
+                """).lstrip()
+
+                invoke_and_assert(
+                    command=[
+                        "deploy",
+                        "test.py:test_function",
+                        "--from",
+                        "github.com/owner/repo",
+                        "--name",
+                        "custom-deployment-name",
+                    ],
+                    expected_code=0,
+                    expected_output_contains=[
+                        "Deployed custom-deployment-name",
+                        "prefect-cloud run test_function/custom-deployment-name",
+                        "prefect-cloud schedule test_function/custom-deployment-name '<CRON SCHEDULE>'",
+                        "https://ui.url/deployments/deployment/test-deployment-id",
+                    ],
+                )
+
+                # Verify the deployment was created with custom names
+                client.create_managed_deployment.assert_called_once()
+                call_kwargs = client.create_managed_deployment.call_args[1]
+                assert call_kwargs["deployment_name"] == "custom-deployment-name"
+
+
+def test_deploy_programmatic_with_custom_names():
+    """Test programmatic invocation of deploy command with custom names"""
+    from prefect_cloud.cli.root import deploy
+
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+        client = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = client
+
+        deployment_id = uuid4()
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
+        client.create_managed_deployment = AsyncMock(return_value=deployment_id)
+
+        # Mock GitHub token retrieval
+        client.get_github_token = AsyncMock(return_value=None)
+
+        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
+            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
+
+            with patch(
+                "prefect_cloud.github.GitHubRepo.get_file_contents"
+            ) as mock_content:
+                mock_content.return_value = textwrap.dedent("""
+                    def test_function():
+                        pass
+                """).lstrip()
+
+                # Call deploy function programmatically with custom names
+                result = deploy(
+                    function="test.py:test_function",
+                    repo="github.com/owner/repo",
+                    credentials=None,
+                    dependencies=[],
+                    with_requirements=None,
+                    env=[],
+                    parameters=[],
+                    deployment_name="custom-deployment-name",
+                    quiet=True,
+                )
+
+                # Verify result is the UUID returned by create_managed_deployment
+                assert result == deployment_id
+
+                # Verify deployment was created with custom names
+                client.create_managed_deployment.assert_called_once()
+                call_kwargs = client.create_managed_deployment.call_args[1]
+                assert call_kwargs["deployment_name"] == "custom-deployment-name"
