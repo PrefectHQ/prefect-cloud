@@ -72,7 +72,7 @@ async def run(
 
 
 async def schedule(
-    deployment_: str, schedule: str, parameters: Optional[dict[str, Any]] = None
+    deployment_: str, schedule: str | None, parameters: Optional[dict[str, Any]] = None
 ):
     deployment = await get_deployment(deployment_)
 

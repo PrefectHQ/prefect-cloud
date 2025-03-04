@@ -49,7 +49,6 @@ async def deploy(
     repo: Annotated[
         str,
         typer.Option(
-            ...,
             "--from",
             "-f",
             default_factory=infer_repo_url,
@@ -68,7 +67,6 @@ async def deploy(
     credentials: Annotated[
         str | None,
         typer.Option(
-            None,
             "--credentials",
             "-c",
             help="GitHub credentials for accessing private repositories",
@@ -77,21 +75,18 @@ async def deploy(
         ),
     ] = None,
     dependencies: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option(
-            ...,
             "--with",
             "-d",
             help=("Python dependencies to include (can be used multiple times)"),
-            default_factory=list,
             rich_help_panel="Dependencies",
             show_default=False,
         ),
-    ] = [],
+    ] = None,
     with_requirements: Annotated[
         str | None,
         typer.Option(
-            None,
             "--with-requirements",
             help="Path to repository's requirements file",
             rich_help_panel="Dependencies",
@@ -99,31 +94,26 @@ async def deploy(
         ),
     ] = None,
     env: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option(
-            ...,
             "--env",
             "-e",
             help="Environment variables in <KEY=VALUE> format (can be used multiple times)",
-            default_factory=list,
             rich_help_panel="Configuration",
             show_default=False,
         ),
-    ] = [],
+    ] = None,
     parameters: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option(
-            ...,
             "--parameter",
             "-p",
             help="Parameter default values in <NAME=VALUE> format (can be used multiple times)",
-            default_factory=list,
         ),
-    ] = [],
+    ] = None,
     quiet: Annotated[
         bool,
         typer.Option(
-            False,
             "--quiet",
             "-q",
             help="Suppress output",
@@ -141,6 +131,11 @@ async def deploy(
     Deploy with a requirements file:
     $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --with-requirements requirements.txt
     """
+    # Initialize default values
+    dependencies = dependencies or []
+    env = env or []
+    parameters = parameters or []
+
     ui_url, api_url, _ = await auth.get_cloud_urls_or_login()
 
     # Split function_path into file path and function name
@@ -306,23 +301,20 @@ async def run(
     deployment: Annotated[
         str,
         typer.Argument(
-            ...,
             help="Name or ID of the deployment to run",
             autocompletion=completions.complete_deployment,
         ),
     ],
     parameters: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option(
-            ...,
             "--parameter",
             "-p",
             help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
-            default_factory=list,
             rich_help_panel="Run",
             show_default=False,
         ),
-    ] = [],
+    ] = None,
 ):
     """
     Run a deployment immediately
@@ -330,6 +322,8 @@ async def run(
     Examples:
         $ prefect-cloud run flow_name/deployment_name
     """
+    parameters = parameters or []
+
     ui_url, _, _ = await auth.get_cloud_urls_or_login()
     func_kwargs = process_key_value_pairs(parameters, as_json=True)
 
@@ -364,7 +358,6 @@ async def schedule(
     deployment: Annotated[
         str,
         typer.Argument(
-            ...,
             help="Name or ID of the deployment to schedule",
             autocompletion=completions.complete_deployment,
         ),
@@ -372,20 +365,17 @@ async def schedule(
     schedule: Annotated[
         str | None,
         typer.Argument(
-            ...,
             help="Cron schedule string or 'none' to unschedule",
         ),
     ],
     parameters: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option(
-            ...,
             "--parameter",
             "-p",
             help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
-            default_factory=list,
         ),
-    ] = [],
+    ] = None,
 ):
     """
     Set a deployment to run on a schedule
@@ -400,6 +390,8 @@ async def schedule(
         Remove schedule:
         $ prefect-cloud schedule flow_name/deployment_name none
     """
+    parameters = parameters or []
+
     func_kwargs = process_key_value_pairs(parameters, as_json=True)
     await deployments.schedule(deployment, schedule, func_kwargs)
 
@@ -409,7 +401,6 @@ async def unschedule(
     deployment: Annotated[
         str,
         typer.Argument(
-            ...,
             help="Name or ID of the deployment to remove schedules from",
         ),
     ],
@@ -482,7 +473,6 @@ async def delete(
     deployment: Annotated[
         str,
         typer.Argument(
-            ...,
             help="Name or ID of the deployment to delete",
             autocompletion=completions.complete_deployment,
         ),
@@ -498,11 +488,19 @@ async def delete(
 async def login(
     key: Annotated[
         str | None,
-        typer.Option(None, "--key", "-k", help="Prefect Cloud API key"),
+        typer.Option(
+            "--key",
+            "-k",
+            help="Prefect Cloud API key",
+        ),
     ] = None,
     workspace: Annotated[
         str | None,
-        typer.Option(None, "--workspace", "-w", help="Workspace ID or slug"),
+        typer.Option(
+            "--workspace",
+            "-w",
+            help="Workspace ID or slug",
+        ),
     ] = None,
 ):
     """
