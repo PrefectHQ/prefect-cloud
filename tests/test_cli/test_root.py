@@ -977,7 +977,7 @@ def test_deploy_programmatic_invocation():
                 assert deployment["function"] == "test_function"
 
 
-def test_deploy_with_custom_names():
+def test_deploy_with_custom_deployment_name():
     """Test deployment with custom flow and deployment names"""
     with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
         client = AsyncMock()
@@ -1012,8 +1012,6 @@ def test_deploy_with_custom_names():
                         "github.com/owner/repo",
                         "--name",
                         "custom-deployment-name",
-                        "--flow-name",
-                        "custom-flow-name",
                     ],
                     expected_code=0,
                     expected_output_contains=[
@@ -1028,7 +1026,6 @@ def test_deploy_with_custom_names():
                 client.create_managed_deployment.assert_called_once()
                 call_kwargs = client.create_managed_deployment.call_args[1]
                 assert call_kwargs["deployment_name"] == "custom-deployment-name"
-                assert call_kwargs["flow_name"] == "custom-flow-name"
 
 
 def test_deploy_programmatic_with_custom_names():
@@ -1071,7 +1068,6 @@ def test_deploy_programmatic_with_custom_names():
                     env=[],
                     parameters=[],
                     deployment_name="custom-deployment-name",
-                    flow_name="custom-flow-name",
                     quiet=True,
                 )
 
@@ -1082,4 +1078,3 @@ def test_deploy_programmatic_with_custom_names():
                 client.create_managed_deployment.assert_called_once()
                 call_kwargs = client.create_managed_deployment.call_args[1]
                 assert call_kwargs["deployment_name"] == "custom-deployment-name"
-                assert call_kwargs["flow_name"] == "custom-flow-name"
