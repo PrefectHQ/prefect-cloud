@@ -111,6 +111,22 @@ async def deploy(
             help="Parameter default values in <NAME=VALUE> format (can be used multiple times)",
         ),
     ] = None,
+    deployment_name: Annotated[
+        str | None,
+        typer.Option(
+            "--name",
+            "-n",
+            help="A name for the deployment. If not provided, the function name will be used.",
+        ),
+    ] = None,
+    flow_name: Annotated[
+        str | None,
+        typer.Option(
+            "--flow-name",
+            "-f",
+            help="A name for the flow. If not provided, the function name will be used.",
+        ),
+    ] = None,
     quiet: Annotated[
         bool,
         typer.Option(
@@ -240,7 +256,7 @@ async def deploy(
                     }
                 )
 
-            deployment_name = f"{function}"
+            deployment_name = deployment_name or f"{function}"
             deployment_id = await client.create_managed_deployment(
                 deployment_name=deployment_name,
                 filepath=filepath,
@@ -252,6 +268,7 @@ async def deploy(
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
                 },
                 parameters=parameter_defaults,
+                flow_name=flow_name,
             )
 
             progress.update(task, completed=True, description="Code deployed!")
