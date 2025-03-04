@@ -1,5 +1,5 @@
 from uuid import UUID
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 import tzlocal
@@ -39,72 +39,96 @@ app = PrefectCloudTyper(
 
 @app.command(rich_help_panel="Deploy")
 async def deploy(
-    function: str = typer.Argument(
-        help="The path to the Python function to deploy in <path/to/file.py:function_name> format",
-        show_default=False,
-    ),
-    repo: str = typer.Option(
-        ...,
-        "--from",
-        "-f",
-        default_factory=infer_repo_url,
-        autocompletion=completions.complete_repo,
-        help=(
-            "GitHub repository URL. e.g.\n\n"
-            "• Repo: github.com/owner/repo\n\n"
-            "• Specific branch: github.com/owner/repo/tree/<branch>\n\n"
-            "• Specific commit: github.com/owner/repo/tree/<commit-sha>\n\n"
-            "If not provided, the repository of the current directory will be used."
+    function: Annotated[
+        str,
+        typer.Argument(
+            help="The path to the Python function to deploy in <path/to/file.py:function_name> format",
+            show_default=False,
         ),
-        rich_help_panel="Source",
-        show_default=False,
-    ),
-    credentials: str | None = typer.Option(
-        None,
-        "--credentials",
-        "-c",
-        help="GitHub credentials for accessing private repositories",
-        rich_help_panel="Source",
-        show_default=False,
-    ),
-    dependencies: list[str] = typer.Option(
-        ...,
-        "--with",
-        "-d",
-        help=("Python dependencies to include (can be used multiple times)"),
-        default_factory=list,
-        rich_help_panel="Dependencies",
-        show_default=False,
-    ),
-    with_requirements: str | None = typer.Option(
-        None,
-        "--with-requirements",
-        help="Path to repository's requirements file",
-        rich_help_panel="Dependencies",
-        show_default=False,
-    ),
-    env: list[str] = typer.Option(
-        ...,
-        "--env",
-        "-e",
-        help="Environment variables in <KEY=VALUE> format (can be used multiple times)",
-        default_factory=list,
-        rich_help_panel="Configuration",
-        show_default=False,
-    ),
-    parameters: list[str] = typer.Option(
-        ...,
-        "--parameter",
-        "-p",
-        help="Parameter default values in <NAME=VALUE> format (can be used multiple times)",
-        default_factory=list,
-    ),
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        "-q",
-        help="Suppress output",
-    ),
+    ],
+    repo: Annotated[
+        str,
+        typer.Option(
+            ...,
+            "--from",
+            "-f",
+            default_factory=infer_repo_url,
+            autocompletion=completions.complete_repo,
+            help=(
+                "GitHub repository URL. e.g.\n\n"
+                "• Repo: github.com/owner/repo\n\n"
+                "• Specific branch: github.com/owner/repo/tree/<branch>\n\n"
+                "• Specific commit: github.com/owner/repo/tree/<commit-sha>\n\n"
+                "If not provided, the repository of the current directory will be used."
+            ),
+            rich_help_panel="Source",
+            show_default=False,
+        ),
+    ],
+    credentials: Annotated[
+        str | None,
+        typer.Option(
+            None,
+            "--credentials",
+            "-c",
+            help="GitHub credentials for accessing private repositories",
+            rich_help_panel="Source",
+            show_default=False,
+        ),
+    ] = None,
+    dependencies: Annotated[
+        list[str],
+        typer.Option(
+            ...,
+            "--with",
+            "-d",
+            help=("Python dependencies to include (can be used multiple times)"),
+            default_factory=list,
+            rich_help_panel="Dependencies",
+            show_default=False,
+        ),
+    ] = [],
+    with_requirements: Annotated[
+        str | None,
+        typer.Option(
+            None,
+            "--with-requirements",
+            help="Path to repository's requirements file",
+            rich_help_panel="Dependencies",
+            show_default=False,
+        ),
+    ] = None,
+    env: Annotated[
+        list[str],
+        typer.Option(
+            ...,
+            "--env",
+            "-e",
+            help="Environment variables in <KEY=VALUE> format (can be used multiple times)",
+            default_factory=list,
+            rich_help_panel="Configuration",
+            show_default=False,
+        ),
+    ] = [],
+    parameters: Annotated[
+        list[str],
+        typer.Option(
+            ...,
+            "--parameter",
+            "-p",
+            help="Parameter default values in <NAME=VALUE> format (can be used multiple times)",
+            default_factory=list,
+        ),
+    ] = [],
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            False,
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ) -> UUID:
     """
     Deploy a Python function to Prefect Cloud
@@ -279,20 +303,26 @@ async def deploy(
 
 @app.command(rich_help_panel="Deploy")
 async def run(
-    deployment: str = typer.Argument(
-        ...,
-        help="Name or ID of the deployment to run",
-        autocompletion=completions.complete_deployment,
-    ),
-    parameters: list[str] = typer.Option(
-        ...,
-        "--parameter",
-        "-p",
-        help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
-        default_factory=list,
-        rich_help_panel="Run",
-        show_default=False,
-    ),
+    deployment: Annotated[
+        str,
+        typer.Argument(
+            ...,
+            help="Name or ID of the deployment to run",
+            autocompletion=completions.complete_deployment,
+        ),
+    ],
+    parameters: Annotated[
+        list[str],
+        typer.Option(
+            ...,
+            "--parameter",
+            "-p",
+            help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
+            default_factory=list,
+            rich_help_panel="Run",
+            show_default=False,
+        ),
+    ] = [],
 ):
     """
     Run a deployment immediately
@@ -331,22 +361,31 @@ async def run(
 
 @app.command(rich_help_panel="Deploy")
 async def schedule(
-    deployment: str = typer.Argument(
-        ...,
-        help="Name or ID of the deployment to schedule",
-        autocompletion=completions.complete_deployment,
-    ),
-    schedule: str = typer.Argument(
-        ...,
-        help="Cron schedule string or 'none' to unschedule",
-    ),
-    parameters: list[str] = typer.Option(
-        ...,
-        "--parameter",
-        "-p",
-        help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
-        default_factory=list,
-    ),
+    deployment: Annotated[
+        str,
+        typer.Argument(
+            ...,
+            help="Name or ID of the deployment to schedule",
+            autocompletion=completions.complete_deployment,
+        ),
+    ],
+    schedule: Annotated[
+        str | None,
+        typer.Argument(
+            ...,
+            help="Cron schedule string or 'none' to unschedule",
+        ),
+    ],
+    parameters: Annotated[
+        list[str],
+        typer.Option(
+            ...,
+            "--parameter",
+            "-p",
+            help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
+            default_factory=list,
+        ),
+    ] = [],
 ):
     """
     Set a deployment to run on a schedule
@@ -367,10 +406,13 @@ async def schedule(
 
 @app.command(rich_help_panel="Deploy")
 async def unschedule(
-    deployment: str = typer.Argument(
-        ...,
-        help="Name or ID of the deployment to remove schedules from",
-    ),
+    deployment: Annotated[
+        str,
+        typer.Argument(
+            ...,
+            help="Name or ID of the deployment to remove schedules from",
+        ),
+    ],
 ):
     """
     Remove deployment schedules
@@ -437,11 +479,14 @@ async def ls():
 
 @app.command(rich_help_panel="Deploy")
 async def delete(
-    deployment: str = typer.Argument(
-        ...,
-        help="Name or ID of the deployment to delete",
-        autocompletion=completions.complete_deployment,
-    ),
+    deployment: Annotated[
+        str,
+        typer.Argument(
+            ...,
+            help="Name or ID of the deployment to delete",
+            autocompletion=completions.complete_deployment,
+        ),
+    ],
 ):
     """
     Delete a deployment
@@ -451,10 +496,14 @@ async def delete(
 
 @app.command(rich_help_panel="Auth")
 async def login(
-    key: str = typer.Option(None, "--key", "-k", help="Prefect Cloud API key"),
-    workspace: str = typer.Option(
-        None, "--workspace", "-w", help="Workspace ID or slug"
-    ),
+    key: Annotated[
+        str | None,
+        typer.Option(None, "--key", "-k", help="Prefect Cloud API key"),
+    ] = None,
+    workspace: Annotated[
+        str | None,
+        typer.Option(None, "--workspace", "-w", help="Workspace ID or slug"),
+    ] = None,
 ):
     """
     Log in to Prefect Cloud
