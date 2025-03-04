@@ -1,9 +1,12 @@
 import asyncio
+import contextvars
 import functools
 import inspect
 import json
+import threading
 import traceback
-from typing import Any, Callable, NoReturn
+from collections.abc import Coroutine
+from typing import Any, Callable, NoReturn, TypeVar
 
 import typer
 from click import ClickException
@@ -12,6 +15,9 @@ from rich.progress import Progress
 from rich.theme import Theme
 
 from prefect_cloud.utilities.exception import MissingProfileError
+
+
+T = TypeVar("T")
 
 
 def exit_with_error(
@@ -100,7 +106,7 @@ def process_key_value_pairs(
     if invalid_pairs:
         exit_with_error(f"Invalid key value pairs: {invalid_pairs}", progress)
 
-    return result
+    return result  # type: ignore
 
 
 class PrefectCloudTyper(typer.Typer):
@@ -162,13 +168,14 @@ class PrefectCloudTyper(typer.Typer):
 
         def wrapper(original_fn: Callable[..., Any]) -> Callable[..., Any]:
             # click doesn't support async functions, so we wrap them in
-            # asyncio.run(). This has the advantage of keeping the function in
-            # the main thread, which means signal handling works for e.g. the
-            # server and workers. However, it means that async CLI commands can
-            # not directly call other async CLI commands (because asyncio.run()
-            # can not be called nested). In that (rare) circumstance, refactor
-            # the CLI command so its business logic can be invoked separately
-            # from its entrypoint.
+            # run_sync(). This allows the function to be run in a synchronous
+            # context, even from within an async or nested sync frame, providing
+            # more flexibility than asyncio.run(). However, note that run_sync
+            # is also fallible and should be used with caution in complex
+            # scenarios. In rare cases where async CLI commands need to call
+            # other async CLI commands, you may need to refactor the CLI command
+            # so its business logic can be invoked separately from its
+            # entrypoint.
             func = inspect.unwrap(original_fn)
 
             if asyncio.iscoroutinefunction(func):
@@ -176,7 +183,7 @@ class PrefectCloudTyper(typer.Typer):
 
                 @functools.wraps(original_fn)
                 def sync_fn(*args: Any, **kwargs: Any) -> Any:
-                    return asyncio.run(async_fn(*args, **kwargs))
+                    return run_sync(async_fn(*args, **kwargs))
 
                 setattr(sync_fn, "aio", async_fn)
                 wrapped_fn = sync_fn
@@ -211,3 +218,92 @@ class PrefectCloudTyper(typer.Typer):
             soft_wrap=not soft_wrap,
             force_interactive=prompt,
         )
+
+
+def run_sync(coro: Coroutine[Any, Any, T]) -> T:
+    """Run a coroutine synchronously.
+
+    This function uses asyncio to run a coroutine in a synchronous context.
+    It attempts the following strategies in order:
+    1. If no event loop is running, creates a new one and runs the coroutine
+    2. If a loop is running, attempts to run the coroutine on that loop
+    3. As a last resort, creates a new thread with its own event loop to run the coroutine
+
+    Context variables are properly propagated between threads in all cases.
+
+    Example:
+    ```python
+    async def f(x: int) -> int:
+        return x + 1
+
+    result = run_sync(f(1))
+    ```
+
+    Args:
+        coro: The coroutine to run synchronously
+
+    Returns:
+        The result of the coroutine
+    """
+    ctx = contextvars.copy_context()
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    try:
+        return ctx.run(loop.run_until_complete, coro)
+    except RuntimeError as e:
+        if "event loop" in str(e):
+            return run_sync_in_thread(coro)
+        raise e
+
+
+def run_sync_in_thread(coro: Coroutine[Any, Any, T]) -> T:
+    """Run a coroutine synchronously in a new thread.
+
+    This function creates a new thread with its own event loop to run the coroutine.
+    Context variables are properly propagated between threads.
+    This is useful when you need to run async code in a context where you can't use
+    the current event loop (e.g., inside an async frame).
+
+    Example:
+    ```python
+    async def f(x: int) -> int:
+        return x + 1
+
+    result = run_sync_in_thread(f(1))
+    ```
+
+    Args:
+        coro: The coroutine to run synchronously
+
+    Returns:
+        The result of the coroutine
+    """
+    result: T | None = None
+    error: BaseException | None = None
+    done = threading.Event()
+    ctx = contextvars.copy_context()
+
+    def thread_target() -> None:
+        nonlocal result, error
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            result = ctx.run(loop.run_until_complete, coro)
+        except BaseException as e:
+            error = e
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+            done.set()
+
+    thread = threading.Thread(target=thread_target)
+    thread.start()
+    done.wait()
+
+    if error is not None:
+        raise error
+
+    return result  # type: ignore
