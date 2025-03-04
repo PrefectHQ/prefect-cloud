@@ -106,7 +106,7 @@ def process_key_value_pairs(
     if invalid_pairs:
         exit_with_error(f"Invalid key value pairs: {invalid_pairs}", progress)
 
-    return result
+    return result  # type: ignore
 
 
 class PrefectCloudTyper(typer.Typer):
@@ -306,4 +306,4 @@ def run_sync_in_thread(coro: Coroutine[Any, Any, T]) -> T:
     if error is not None:
         raise error
 
-    return result
+    return result  # type: ignore
