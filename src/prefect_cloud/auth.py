@@ -93,16 +93,26 @@ async def login(api_key: str | None = None, workspace_id_or_slug: str | None = N
         if not api_key:
             return
 
-    workspace: Workspace | None = None
-    if workspace_id_or_slug:
-        workspace = await lookup_workspace(api_key, workspace_id_or_slug)
+    workspaces = await get_workspaces(api_key)
 
-    if not workspace:
-        workspace = await prompt_for_workspace(api_key)
-        if not workspace:
+    # Try to use specified workspace if provided
+    if workspace_id_or_slug and workspaces:
+        workspace = await lookup_workspace(workspace_id_or_slug, workspaces)
+        if workspace:
+            set_cloud_profile(api_key, workspace)
             return
 
-    set_cloud_profile(api_key, workspace)
+    # Select from existing workspaces or create a new one
+    if workspaces:
+        workspace = await prompt_for_workspace(workspaces)
+        if workspace:
+            set_cloud_profile(api_key, workspace)
+    else:
+        accounts = await get_accounts(api_key)
+        account = await prompt_for_account(accounts)
+        if account:
+            workspace = await create_workspace(api_key, account)
+            set_cloud_profile(api_key, workspace)
 
 
 def logout():
@@ -261,7 +271,32 @@ async def get_workspaces(api_key: str) -> Sequence[Workspace]:
         return workspaces
 
 
-async def lookup_workspace(api_key: str, workspace_id_or_slug: str) -> Workspace | None:
+async def create_workspace(
+    api_key: str, account: Account, name: str = "default"
+) -> Workspace:
+    """Create a workspace"""
+    async with cloud_client(api_key) as client:
+        response = await client.request(
+            "POST",
+            f"/accounts/{account.account_id}/workspaces/",
+            json={"handle": name, "name": name},
+        )
+        response.raise_for_status()
+        workspace = response.json()
+
+        return Workspace(
+            account_id=account.account_id,
+            account_name=account.account_handle,
+            account_handle=account.account_handle,
+            workspace_id=UUID(workspace["id"]),
+            workspace_name=workspace["name"],
+            workspace_handle=workspace["handle"],
+        )
+
+
+async def lookup_workspace(
+    workspace_id_or_slug: str, workspaces: Sequence[Workspace]
+) -> Workspace | None:
     """Looks up a workspace by ID or slug"""
     workspace_id: UUID | None = None
     try:
@@ -269,7 +304,7 @@ async def lookup_workspace(api_key: str, workspace_id_or_slug: str) -> Workspace
     except ValueError:
         pass
 
-    for workspace in await get_workspaces(api_key):
+    for workspace in workspaces:
         if workspace_id and workspace.workspace_id == workspace_id:
             return workspace
         if workspace.full_handle == workspace_id_or_slug:
@@ -280,10 +315,8 @@ async def lookup_workspace(api_key: str, workspace_id_or_slug: str) -> Workspace
     return None
 
 
-async def prompt_for_workspace(api_key: str) -> Workspace | None:
+async def prompt_for_workspace(workspaces: Sequence[Workspace]) -> Workspace | None:
     """Prompts the user to select a workspace from the list of available workspaces"""
-    workspaces = await get_workspaces(api_key)
-
     if not workspaces:
         return None
 
@@ -297,6 +330,22 @@ async def prompt_for_workspace(api_key: str) -> Workspace | None:
     return next(
         workspace for workspace in workspaces if workspace.full_handle == selected
     )
+
+
+async def prompt_for_account(accounts: Sequence[Account]) -> Account | None:
+    """Prompts the user to select an account from the list of available account"""
+
+    if not accounts:
+        return None
+
+    if len(accounts) == 1:
+        return accounts[0]
+
+    selected = prompt_select_from_list(
+        "Select an account",
+        sorted([account.account_handle for account in accounts]),
+    )
+    return next(account for account in accounts if account.account_handle == selected)
 
 
 def get_from_env_or_profile(key: str) -> str | None:
