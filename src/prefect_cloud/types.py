@@ -5,12 +5,6 @@ from pydantic import (
     BeforeValidator,
     Field,
 )
-from pydantic_extra_types.pendulum_dt import Date as PydanticDate
-from pydantic_extra_types.pendulum_dt import DateTime as PydanticDateTime
-from typing_extensions import TypeAlias
-
-DateTime: TypeAlias = PydanticDateTime
-Date: TypeAlias = PydanticDate
 
 
 T = TypeVar("T")
