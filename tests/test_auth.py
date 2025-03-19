@@ -13,6 +13,7 @@ from prefect_cloud.auth import (
     Me,
     Workspace,
     cloud_client,
+    create_workspace,
     get_accounts,
     get_cloud_profile,
     get_cloud_urls_or_login,
@@ -23,6 +24,7 @@ from prefect_cloud.auth import (
     logout,
     lookup_workspace,
     me,
+    prompt_for_account,
     prompt_for_workspace,
     set_cloud_profile,
 )
@@ -181,81 +183,6 @@ async def test_get_workspaces_handles_http_error(
         await get_workspaces(sample_api_key)
 
 
-@pytest.mark.parametrize(
-    "identifier,expected_found",
-    [
-        ("22222222-1234-5678-1234-567812345678", True),  # By UUID
-        ("test-account/test-workspace", True),  # By full handle
-        ("test-workspace", True),  # By workspace handle
-        ("nonexistent", False),  # Not found
-    ],
-)
-async def test_lookup_workspace(
-    cloud_api: Router,
-    sample_api_key: str,
-    sample_workspace: Workspace,
-    identifier: str,
-    expected_found: bool,
-):
-    """Workspace lookup should find workspaces by UUID, full handle, or workspace handle."""
-    cloud_api.get("/me/workspaces").mock(
-        return_value=httpx.Response(
-            200, json=[sample_workspace.model_dump(mode="json")]
-        )
-    )
-
-    result = await lookup_workspace(sample_api_key, identifier)
-
-    if expected_found:
-        assert result == sample_workspace
-    else:
-        assert result is None
-
-
-async def test_prompt_for_workspace_single_workspace(
-    cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
-):
-    """prompt_for_workspace() should return the workspace directly if there's only one."""
-    cloud_api.get("/me/workspaces").mock(
-        return_value=httpx.Response(
-            200, json=[sample_workspace.model_dump(mode="json")]
-        )
-    )
-
-    result = await prompt_for_workspace(sample_api_key)
-    assert result == sample_workspace
-
-
-async def test_prompt_for_workspace_multiple_workspaces(
-    cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
-):
-    """prompt_for_workspace() should prompt user when multiple workspaces exist."""
-    workspace2 = Workspace(
-        account_id=sample_workspace.account_id,
-        account_name=sample_workspace.account_name,
-        account_handle="another-account",
-        workspace_id=UUID("33333333-1234-5678-1234-567812345678"),
-        workspace_name="Another Workspace",
-        workspace_handle="another-workspace",
-    )
-
-    cloud_api.get("/me/workspaces").mock(
-        return_value=httpx.Response(
-            200,
-            json=[
-                workspace2.model_dump(mode="json"),
-                sample_workspace.model_dump(mode="json"),
-            ],
-        )
-    )
-
-    with patch("prefect_cloud.auth.prompt_select_from_list") as mock_prompt:
-        mock_prompt.return_value = sample_workspace.full_handle
-        result = await prompt_for_workspace(sample_api_key)
-        assert result == sample_workspace
-        mock_prompt.assert_called_once()
-
-
 async def test_login_with_no_api_key_and_no_existing_profile(
     cloud_api: Router, mock_profiles_path: Path, sample_workspace: Workspace
 ):
@@ -318,27 +245,34 @@ async def test_login_with_workspace_id(
 
     assert get_cloud_profile() is None
 
-    await login(sample_api_key, str(sample_workspace.workspace_id))
+    with patch("prefect_cloud.auth.lookup_workspace") as mock_lookup:
+        mock_lookup.return_value = sample_workspace
+        await login(sample_api_key, str(sample_workspace.workspace_id))
 
-    profile = get_cloud_profile()
-    assert profile is not None
-    assert profile["PREFECT_API_KEY"] == sample_api_key
-    assert profile["PREFECT_API_URL"] == sample_workspace.api_url
+        profile = get_cloud_profile()
+        assert profile is not None
+        assert profile["PREFECT_API_KEY"] == sample_api_key
+        assert profile["PREFECT_API_URL"] == sample_workspace.api_url
 
 
 async def test_login_with_workspace_not_found(cloud_api: Router, sample_api_key: str):
     """login() should handle the case when specified workspace is not found."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(200, json={}))
     cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
-    result = await login(sample_api_key, "nonexistent")
-    assert result is None
+    cloud_api.get("/me/accounts").mock(return_value=httpx.Response(200, json=[]))
+
+    # Update to use patch for lookup_workspace since it now takes workspaces list not api_key
+    with patch("prefect_cloud.auth.lookup_workspace") as mock_lookup:
+        mock_lookup.return_value = None
+        result = await login(sample_api_key, "nonexistent")
+        assert result is None
 
 
 async def test_login_with_no_workspaces(cloud_api: Router, sample_api_key: str):
     """login() should handle the case when no workspaces are available."""
     cloud_api.get("/me/").mock(return_value=httpx.Response(200))
     cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
-
+    cloud_api.get("/me/accounts").mock(return_value=httpx.Response(200, json=[]))
     result = await login(sample_api_key)
     assert result is None
 
@@ -346,7 +280,8 @@ async def test_login_with_no_workspaces(cloud_api: Router, sample_api_key: str):
 async def test_login_with_valid_key_but_workspace_selection_cancelled(
     cloud_api: Router, sample_api_key: str, sample_workspace: Workspace
 ):
-    """login() should handle cancelled workspace selection."""
+    """login() should handle cancelled workspace selection without creating a workspace."""
+    # There are workspaces available, but the user cancels the selection
     cloud_api.get("/me/").mock(return_value=httpx.Response(200))
     cloud_api.get("/me/workspaces").mock(
         return_value=httpx.Response(
@@ -357,10 +292,16 @@ async def test_login_with_valid_key_but_workspace_selection_cancelled(
         )
     )
 
+    # Mock prompt_for_workspace to return None, simulating a cancelled selection
+    # Updated to match new function signature that takes workspaces list
     with patch("prefect_cloud.auth.prompt_for_workspace") as mock_prompt:
         mock_prompt.return_value = None
-        result = await login(sample_api_key)
-        assert result is None
+
+        with patch("prefect_cloud.auth.get_workspaces") as mock_get_workspaces:
+            mock_get_workspaces.return_value = [sample_workspace]
+
+            result = await login(sample_api_key)
+            assert result is None
 
 
 def test_logout_removes_profile(
@@ -607,3 +548,300 @@ async def test_env_vars_take_precedence_over_profile(
         assert ui_url == "https://app.prefect.cloud/account/123/workspace/456"
         assert api_url == test_api_url
         assert api_key == test_api_key
+
+
+async def test_create_workspace(
+    cloud_api: Router, sample_api_key: str, sample_account: Account
+):
+    """create_workspace() should create a new workspace in the given account."""
+    workspace_data = {
+        "id": "33333333-1234-5678-1234-567812345678",
+        "name": "default",
+        "handle": "default",
+    }
+
+    cloud_api.post(
+        f"https://api.prefect.cloud/api/accounts/{sample_account.account_id}/workspaces/"
+    ).mock(return_value=httpx.Response(201, json=workspace_data))
+
+    result = await create_workspace(sample_api_key, sample_account)
+
+    assert result.account_id == sample_account.account_id
+    assert result.account_handle == sample_account.account_handle
+    assert result.workspace_id == UUID(workspace_data["id"])
+    assert result.workspace_name == workspace_data["name"]
+    assert result.workspace_handle == workspace_data["handle"]
+
+
+async def test_create_workspace_with_custom_name(
+    cloud_api: Router, sample_api_key: str, sample_account: Account
+):
+    """create_workspace() should support creating a workspace with a custom name."""
+    custom_name = "custom-workspace"
+    workspace_data = {
+        "id": "33333333-1234-5678-1234-567812345678",
+        "name": custom_name,
+        "handle": custom_name,
+    }
+
+    cloud_api.post(
+        f"https://api.prefect.cloud/api/accounts/{sample_account.account_id}/workspaces/"
+    ).mock(return_value=httpx.Response(201, json=workspace_data))
+
+    result = await create_workspace(sample_api_key, sample_account, name=custom_name)
+
+    assert result.workspace_name == custom_name
+    assert result.workspace_handle == custom_name
+
+
+async def test_create_workspace_handles_http_error(
+    cloud_api: Router, sample_api_key: str, sample_account: Account
+):
+    """create_workspace() should handle HTTP errors gracefully."""
+    cloud_api.post(
+        f"https://api.prefect.cloud/api/accounts/{sample_account.account_id}/workspaces/"
+    ).mock(return_value=httpx.Response(500))
+
+    with pytest.raises(HTTPStatusError):
+        await create_workspace(sample_api_key, sample_account)
+
+
+async def test_login_with_no_workspaces_creates_default(
+    cloud_api: Router, sample_api_key: str, sample_account: Account
+):
+    """login() should create a default workspace when no workspaces exist."""
+    # Mock empty workspaces and accounts with one account
+    cloud_api.get("/me/").mock(return_value=httpx.Response(200))
+    cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
+    cloud_api.get("/me/accounts").mock(
+        return_value=httpx.Response(200, json=[sample_account.model_dump(mode="json")])
+    )
+
+    # Mock workspace creation
+    workspace_data = {
+        "id": "33333333-1234-5678-1234-567812345678",
+        "name": "default",
+        "handle": "default",
+    }
+    cloud_api.post(
+        f"https://api.prefect.cloud/api/accounts/{sample_account.account_id}/workspaces/"
+    ).mock(return_value=httpx.Response(201, json=workspace_data))
+
+    # Mock account selection with the updated prompt_for_account that takes accounts directly
+    with patch("prefect_cloud.auth.get_accounts") as mock_get_accounts:
+        mock_get_accounts.return_value = [sample_account]
+
+        with patch("prefect_cloud.auth.prompt_for_account") as mock_prompt_account:
+            mock_prompt_account.return_value = sample_account
+
+            with patch("prefect_cloud.auth.set_cloud_profile") as mock_set_profile:
+                await login(sample_api_key)
+                mock_set_profile.assert_called_once()
+
+                # Verify the workspace passed to set_cloud_profile
+                workspace_arg = mock_set_profile.call_args[0][1]
+                assert workspace_arg.workspace_id == UUID(workspace_data["id"])
+                assert workspace_arg.workspace_name == workspace_data["name"]
+
+
+async def test_login_with_no_workspaces_and_multiple_accounts(
+    cloud_api: Router, sample_api_key: str, sample_account: Account
+):
+    """login() should prompt for account selection when creating a workspace with multiple accounts."""
+    # Mock empty workspaces and multiple accounts
+    cloud_api.get("/me/").mock(return_value=httpx.Response(200))
+    cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
+
+    account2 = Account(
+        account_id=UUID("44444444-1234-5678-1234-567812345678"),
+        account_name="Another Account",
+        account_handle="another-account",
+    )
+
+    cloud_api.get("/me/accounts").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                account2.model_dump(mode="json"),
+                sample_account.model_dump(mode="json"),
+            ],
+        )
+    )
+
+    # Mock workspace creation
+    workspace_data = {
+        "id": "33333333-1234-5678-1234-567812345678",
+        "name": "default",
+        "handle": "default",
+    }
+    cloud_api.post(
+        f"https://api.prefect.cloud/api/accounts/{sample_account.account_id}/workspaces/"
+    ).mock(return_value=httpx.Response(201, json=workspace_data))
+
+    # Mock account selection with the updated prompt_for_account that takes accounts directly
+    with patch("prefect_cloud.auth.get_accounts") as mock_get_accounts:
+        mock_get_accounts.return_value = [account2, sample_account]
+
+        with patch("prefect_cloud.auth.prompt_for_account") as mock_prompt_account:
+            mock_prompt_account.return_value = sample_account
+
+            with patch("prefect_cloud.auth.set_cloud_profile") as mock_set_profile:
+                await login(sample_api_key)
+                mock_set_profile.assert_called_once()
+
+                # Verify the workspace passed to set_cloud_profile
+                workspace_arg = mock_set_profile.call_args[0][1]
+                assert workspace_arg.workspace_id == UUID(workspace_data["id"])
+                assert workspace_arg.account_id == sample_account.account_id
+
+
+async def test_login_with_no_workspaces_account_selection_cancelled(
+    cloud_api: Router, sample_api_key: str, sample_account: Account
+):
+    """login() should handle cancelled account selection when creating a workspace."""
+    # Mock empty workspaces and one account
+    cloud_api.get("/me/").mock(return_value=httpx.Response(200))
+    cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
+    cloud_api.get("/me/accounts").mock(
+        return_value=httpx.Response(200, json=[sample_account.model_dump(mode="json")])
+    )
+
+    # Mock account selection with the updated prompt_for_account that takes accounts directly
+    with patch("prefect_cloud.auth.get_accounts") as mock_get_accounts:
+        mock_get_accounts.return_value = [sample_account]
+
+        with patch("prefect_cloud.auth.prompt_for_account") as mock_prompt:
+            mock_prompt.return_value = None
+            result = await login(sample_api_key)
+            assert result is None
+
+
+async def test_login_with_no_workspaces_and_no_accounts(
+    cloud_api: Router, sample_api_key: str
+):
+    """login() should handle the case when no accounts or workspaces are available."""
+    # Mock empty responses
+    cloud_api.get("/me/").mock(return_value=httpx.Response(200))
+    cloud_api.get("/me/workspaces").mock(return_value=httpx.Response(200, json=[]))
+    cloud_api.get("/me/accounts").mock(return_value=httpx.Response(200, json=[]))
+
+    result = await login(sample_api_key)
+    assert result is None
+
+
+async def test_prompt_for_account(sample_account: Account):
+    """prompt_for_account() should handle account selection appropriately."""
+    # Test with a single account (should return it directly)
+    accounts = [sample_account]
+    result = await prompt_for_account(accounts)
+    assert result == sample_account
+
+    # Test with multiple accounts (should prompt for selection)
+    account2 = Account(
+        account_id=UUID("44444444-1234-5678-1234-567812345678"),
+        account_name="Another Account",
+        account_handle="another-account",
+    )
+    accounts = [account2, sample_account]
+
+    with patch("prefect_cloud.auth.prompt_select_from_list") as mock_prompt:
+        mock_prompt.return_value = sample_account.account_handle
+        result = await prompt_for_account(accounts)
+        assert result == sample_account
+        mock_prompt.assert_called_once_with(
+            "Select an account",
+            sorted([account2.account_handle, sample_account.account_handle]),
+        )
+
+    # Test with empty accounts list
+    result = await prompt_for_account([])
+    assert result is None
+
+
+async def test_prompt_for_workspace_single_workspace(
+    sample_workspace: Workspace,
+):
+    """prompt_for_workspace() should return the workspace directly if there's only one."""
+    workspaces = [sample_workspace]
+
+    result = await prompt_for_workspace(workspaces)
+    assert result == sample_workspace
+
+
+async def test_prompt_for_workspace_multiple_workspaces(
+    sample_workspace: Workspace,
+):
+    """prompt_for_workspace() should prompt user when multiple workspaces exist."""
+    workspace2 = Workspace(
+        account_id=sample_workspace.account_id,
+        account_name=sample_workspace.account_name,
+        account_handle="another-account",
+        workspace_id=UUID("33333333-1234-5678-1234-567812345678"),
+        workspace_name="Another Workspace",
+        workspace_handle="another-workspace",
+    )
+
+    workspaces = [workspace2, sample_workspace]
+
+    with patch("prefect_cloud.auth.prompt_select_from_list") as mock_prompt:
+        mock_prompt.return_value = sample_workspace.full_handle
+        result = await prompt_for_workspace(workspaces)
+        assert result == sample_workspace
+        mock_prompt.assert_called_once()
+
+
+async def test_prompt_for_workspace_no_workspaces():
+    """prompt_for_workspace() should return None when no workspaces are available."""
+    workspaces = []
+
+    result = await prompt_for_workspace(workspaces)
+    assert result is None
+
+
+async def test_lookup_workspace(
+    sample_workspace: Workspace,
+):
+    """Workspace lookup should find workspaces by UUID, full handle, or workspace handle."""
+    # Create a list of workspaces for testing
+    workspaces = [sample_workspace]
+
+    # Test lookup by UUID
+    result = await lookup_workspace(str(sample_workspace.workspace_id), workspaces)
+    assert result == sample_workspace
+
+    # Test lookup by full handle
+    result = await lookup_workspace(sample_workspace.full_handle, workspaces)
+    assert result == sample_workspace
+
+    # Test lookup by workspace handle
+    result = await lookup_workspace(sample_workspace.workspace_handle, workspaces)
+    assert result == sample_workspace
+
+    # Test lookup with nonexistent identifier
+    result = await lookup_workspace("nonexistent", workspaces)
+    assert result is None
+
+
+@pytest.mark.parametrize(
+    "identifier,expected_found",
+    [
+        ("22222222-1234-5678-1234-567812345678", True),  # By UUID
+        ("test-account/test-workspace", True),  # By full handle
+        ("test-workspace", True),  # By workspace handle
+        ("nonexistent", False),  # Not found
+    ],
+)
+async def test_lookup_workspace_with_different_identifiers(
+    sample_workspace: Workspace,
+    identifier: str,
+    expected_found: bool,
+):
+    """Workspace lookup should find workspaces by UUID, full handle, or workspace handle."""
+    workspaces = [sample_workspace]
+
+    result = await lookup_workspace(identifier, workspaces)
+
+    if expected_found:
+        assert result == sample_workspace
+    else:
+        assert result is None
