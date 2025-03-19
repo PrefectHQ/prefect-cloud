@@ -4,7 +4,6 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import pendulum
 import pydantic.version
 import pytest
 from pydantic import SecretStr
@@ -141,8 +140,13 @@ class TestFunctionToSchema:
 
     def test_function_with_datetime_arguments(self):
         def f(
-            x: datetime.datetime,
-            y: pendulum.DateTime = pendulum.datetime(2025, 1, 1),
+            a: datetime.date,
+            b: datetime.datetime,
+            c: datetime.timedelta,
+            x: datetime.date = datetime.date(2025, 1, 1),
+            y: datetime.datetime = datetime.datetime(
+                2025, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc
+            ),
             z: datetime.timedelta = datetime.timedelta(seconds=5),
         ):
             pass
@@ -152,28 +156,47 @@ class TestFunctionToSchema:
             "title": "Parameters",
             "type": "object",
             "properties": {
-                "x": {
-                    "format": "date-time",
+                "a": {
+                    "format": "date",
                     "position": 0,
+                    "title": "a",
+                    "type": "string",
+                },
+                "b": {
+                    "format": "date-time",
+                    "position": 1,
+                    "title": "b",
+                    "type": "string",
+                },
+                "c": {
+                    "format": "duration",
+                    "position": 2,
+                    "title": "c",
+                    "type": "string",
+                },
+                "x": {
+                    "default": "2025-01-01",
+                    "format": "date",
+                    "position": 3,
                     "title": "x",
                     "type": "string",
                 },
                 "y": {
                     "default": "2025-01-01T00:00:00Z",
                     "format": "date-time",
-                    "position": 1,
+                    "position": 4,
                     "title": "y",
                     "type": "string",
                 },
                 "z": {
                     "default": "PT5S",
                     "format": "duration",
-                    "position": 2,
+                    "position": 5,
                     "title": "z",
                     "type": "string",
                 },
             },
-            "required": ["x"],
+            "required": ["a", "b", "c"],
             "definitions": {},
         }
         assert schema.model_dump_for_openapi() == expected_schema
@@ -346,6 +369,9 @@ class TestFunctionToSchema:
         # pydantic (not pydantic.v1) and allows us to test that we
         # generate consistent schemas across v1 and v2
         import pydantic
+        import datetime
+        from enum import Enum
+        from typing import List
 
         class Foo(pydantic.BaseModel):
             bar: str
@@ -362,39 +388,13 @@ class TestFunctionToSchema:
             i: int = 0,
             x: float = 1.0,
             model: Foo = Foo(bar="bar"),
-            pdt: pendulum.DateTime = pendulum.datetime(2025, 1, 1),
-            pdate: pendulum.Date = pendulum.date(2025, 1, 1),
-            pduration: pendulum.Duration = pendulum.duration(seconds=5),
+            date_arg: datetime.date = datetime.date(2025, 1, 1),
+            datetime_arg: datetime.datetime = datetime.datetime(
+                2025, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc
+            ),
+            timedelta_arg: datetime.timedelta = datetime.timedelta(seconds=5),
             c: Color = Color.BLUE,
         ): ...
-
-        datetime_schema = {
-            "title": "pdt",
-            "default": "2025-01-01T00:00:00+00:00",
-            "position": 6,
-            "type": "string",
-            "format": "date-time",
-        }
-        duration_schema = {
-            "title": "pduration",
-            "default": 5.0,
-            "position": 8,
-            "type": "number",
-            "format": "time-delta",
-        }
-        enum_schema = {
-            "enum": ["RED", "GREEN", "BLUE"],
-            "title": "Color",
-            "type": "string",
-            "description": "An enumeration.",
-        }
-
-        # these overrides represent changes in how pydantic generates schemas in v2
-        datetime_schema["default"] = "2025-01-01T00:00:00Z"
-        duration_schema["default"] = "PT5S"
-        duration_schema["type"] = "string"
-        duration_schema["format"] = "duration"
-        enum_schema.pop("description")
 
         schema = parameter_schema(f)
         assert schema.model_dump_for_openapi() == {
@@ -421,15 +421,27 @@ class TestFunctionToSchema:
                     "position": 5,
                     "title": "model",
                 },
-                "pdt": datetime_schema,
-                "pdate": {
-                    "title": "pdate",
+                "date_arg": {
                     "default": "2025-01-01",
-                    "position": 7,
-                    "type": "string",
                     "format": "date",
+                    "position": 6,
+                    "title": "date_arg",
+                    "type": "string",
                 },
-                "pduration": duration_schema,
+                "datetime_arg": {
+                    "default": "2025-01-01T00:00:00Z",
+                    "format": "date-time",
+                    "position": 7,
+                    "title": "datetime_arg",
+                    "type": "string",
+                },
+                "timedelta_arg": {
+                    "default": "PT5S",
+                    "format": "duration",
+                    "position": 8,
+                    "title": "timedelta_arg",
+                    "type": "string",
+                },
                 "c": {
                     "title": "c",
                     "default": "BLUE",
@@ -445,7 +457,11 @@ class TestFunctionToSchema:
                     "title": "Foo",
                     "type": "object",
                 },
-                "Color": enum_schema,
+                "Color": {
+                    "enum": ["RED", "GREEN", "BLUE"],
+                    "title": "Color",
+                    "type": "string",
+                },
             },
         }
 
@@ -856,12 +872,17 @@ class TestEntrypointToSchema:
     def test_function_with_datetime_arguments(self, tmp_path: Path):
         source_code = dedent(
             """
-        import pendulum
         import datetime                 
+        from datetime import tzinfo
 
         def f(
-            x: datetime.datetime,
-            y: pendulum.DateTime = pendulum.datetime(2025, 1, 1),
+            a: datetime.date,
+            b: datetime.datetime,
+            c: datetime.timedelta,
+            x: datetime.date = datetime.date(2025, 1, 1),
+            y: datetime.datetime = datetime.datetime(
+                2025, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc
+            ),
             z: datetime.timedelta = datetime.timedelta(seconds=5),
         ):
             pass
@@ -873,28 +894,47 @@ class TestEntrypointToSchema:
             "title": "Parameters",
             "type": "object",
             "properties": {
-                "x": {
-                    "format": "date-time",
+                "a": {
+                    "format": "date",
                     "position": 0,
+                    "title": "a",
+                    "type": "string",
+                },
+                "b": {
+                    "format": "date-time",
+                    "position": 1,
+                    "title": "b",
+                    "type": "string",
+                },
+                "c": {
+                    "format": "duration",
+                    "position": 2,
+                    "title": "c",
+                    "type": "string",
+                },
+                "x": {
+                    "default": "2025-01-01",
+                    "format": "date",
+                    "position": 3,
                     "title": "x",
                     "type": "string",
                 },
                 "y": {
                     "default": "2025-01-01T00:00:00Z",
                     "format": "date-time",
-                    "position": 1,
+                    "position": 4,
                     "title": "y",
                     "type": "string",
                 },
                 "z": {
                     "default": "PT5S",
                     "format": "duration",
-                    "position": 2,
+                    "position": 5,
                     "title": "z",
                     "type": "string",
                 },
             },
-            "required": ["x"],
+            "required": ["a", "b", "c"],
             "definitions": {},
         }
         assert schema.model_dump_for_openapi() == expected_schema
@@ -1099,7 +1139,6 @@ class TestEntrypointToSchema:
         source_code = dedent(
             """
         import pydantic
-        import pendulum
         import datetime
         from enum import Enum
         from typing import List
@@ -1119,9 +1158,9 @@ class TestEntrypointToSchema:
             i: int = 0,
             x: float = 1.0,
             model: Foo = Foo(bar="bar"),
-            pdt: pendulum.DateTime = pendulum.datetime(2025, 1, 1),
-            pdate: pendulum.Date = pendulum.date(2025, 1, 1),
-            pduration: pendulum.Duration = pendulum.duration(seconds=5),
+            date_arg: datetime.date = datetime.date(2025, 1, 1),
+            datetime_arg: datetime.datetime = datetime.datetime(2025, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc),
+            timedelta_arg: datetime.timedelta = datetime.timedelta(seconds=5),
             c: Color = Color.BLUE,
         ):
             pass
@@ -1129,34 +1168,28 @@ class TestEntrypointToSchema:
         )
 
         datetime_schema = {
-            "title": "pdt",
-            "default": "2025-01-01T00:00:00+00:00",
-            "position": 6,
+            "title": "datetime_arg",
+            "default": "2025-01-01T00:00:00Z",
+            "position": 7,
             "type": "string",
             "format": "date-time",
         }
+
         duration_schema = {
-            "title": "pduration",
-            "default": 5.0,
+            "title": "timedelta_arg",
+            "default": "PT5S",
             "position": 8,
-            "type": "number",
-            "format": "time-delta",
+            "type": "string",
+            "format": "duration",
         }
+
         enum_schema = {
             "enum": ["RED", "GREEN", "BLUE"],
             "title": "Color",
             "type": "string",
-            "description": "An enumeration.",
         }
 
-        # these overrides represent changes in how pydantic generates schemas in v2
-        datetime_schema["default"] = "2025-01-01T00:00:00Z"
-        duration_schema["default"] = "PT5S"
-        duration_schema["type"] = "string"
-        duration_schema["format"] = "duration"
-        enum_schema.pop("description")
-
-        schema = tmp_path.joinpath("test.py").write_text(source_code)
+        tmp_path.joinpath("test.py").write_text(source_code)
         schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
 
         assert schema.model_dump_for_openapi() == {
@@ -1183,15 +1216,15 @@ class TestEntrypointToSchema:
                     "position": 5,
                     "title": "model",
                 },
-                "pdt": datetime_schema,
-                "pdate": {
-                    "title": "pdate",
+                "date_arg": {
                     "default": "2025-01-01",
-                    "position": 7,
-                    "type": "string",
                     "format": "date",
+                    "position": 6,
+                    "title": "date_arg",
+                    "type": "string",
                 },
-                "pduration": duration_schema,
+                "datetime_arg": datetime_schema,
+                "timedelta_arg": duration_schema,
                 "c": {
                     "title": "c",
                     "default": "BLUE",
