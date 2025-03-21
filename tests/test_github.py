@@ -3,12 +3,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import click.exceptions
 import pytest
 from httpx import Response
 
 from prefect_cloud.github import (
     FileNotFound,
+    RepoUnknown,
     GitHubRepo,
     get_local_repo_urls,
     infer_repo_url,
@@ -305,7 +305,7 @@ class TestInferRepoUrl:
         with tempfile.TemporaryDirectory() as temp_dir:
             os.chdir(temp_dir)
 
-            with pytest.raises(click.exceptions.Exit):
+            with pytest.raises(RepoUnknown):
                 infer_repo_url()
 
     def test_exits_when_not_github_url(self, git_repo: Path):
@@ -321,7 +321,7 @@ class TestInferRepoUrl:
             capture_output=True,
         )
 
-        with pytest.raises(click.exceptions.Exit):
+        with pytest.raises(RepoUnknown):
             infer_repo_url()
 
 

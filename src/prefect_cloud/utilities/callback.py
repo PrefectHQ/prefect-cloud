@@ -22,6 +22,7 @@ class CallbackContext:
         """Wait for a callback result."""
         result = self.queue.get()
 
+        # re-raise exceptions
         if isinstance(result, Exception):
             raise result
 
@@ -50,7 +51,10 @@ class CallbackServerHandler(BaseHTTPRequestHandler):
         parts = urlparse(self.path)
         query_params = parse_qs(parts.query)
         path = parts.path
-        result = self.process_get(path, query_params)
+        try:
+            result = self.process_get(path, query_params)
+        except Exception as e:
+            result = e
 
         self.send_response(200)
         self.send_header("Content-type", "text/html")
@@ -70,7 +74,10 @@ class CallbackServerHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length) if content_length > 0 else b"{}"
         data: dict[str, Any] = json.loads(body) if body else {}
         path = urlparse(self.path).path
-        result = self.process_post(path, data)
+        try:
+            result = self.process_post(path, data)
+        except Exception as e:
+            result = e
 
         self.send_response(200)
         self.add_cors_headers()
@@ -79,12 +86,18 @@ class CallbackServerHandler(BaseHTTPRequestHandler):
         self.result_queue.put(result)
 
     def process_get(self, path: str, query_params: dict[str, list[str]]) -> Any:
-        """Process GET request and return a result to be put in the queue."""
+        """
+        Process GET request and return a result to be put in the queue.
+
+        Exceptions raised here will be re-raised in the main thread.
+        """
         return None
 
     def process_post(self, path: str, data: dict[str, Any]) -> Any:
         """
         Process POST request and return a result to be put in the queue.
+
+        Exceptions raised here will be re-raised in the main thread.
         """
         return None
 

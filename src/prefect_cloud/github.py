@@ -17,7 +17,7 @@ class FileNotFound(Exception):
     pass
 
 
-class InferRepoError(Exception):
+class RepoUnknown(Exception):
     pass
 
 
@@ -213,7 +213,7 @@ def infer_repo_url() -> str:
         return url
 
     except (subprocess.CalledProcessError, ValueError):
-        raise InferRepoError(
+        raise RepoUnknown(
             "No repository specified, and this directory doesn't appear to be a "
             "GitHub repository.  Specify --from to indicate where Prefect Cloud will "
             "download your code from."

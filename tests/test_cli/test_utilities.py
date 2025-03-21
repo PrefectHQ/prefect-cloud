@@ -1,6 +1,5 @@
 import pytest
 from prefect_cloud.cli.utilities import process_key_value_pairs
-import typer
 
 
 def test_process_key_value_pairs():
@@ -22,15 +21,15 @@ def test_process_key_value_pairs():
     assert process_key_value_pairs(input_list) == expected
 
     # Test with invalid format
-    with pytest.raises(typer.Exit):
+    with pytest.raises(ValueError):
         process_key_value_pairs(["invalid_format"])
 
     # Test with missing value
-    with pytest.raises(typer.Exit):
+    with pytest.raises(ValueError):
         process_key_value_pairs(["key1=value1", "key2="])
 
     # Test with missing key
-    with pytest.raises(typer.Exit):
+    with pytest.raises(ValueError):
         process_key_value_pairs(["=value"])
 
 

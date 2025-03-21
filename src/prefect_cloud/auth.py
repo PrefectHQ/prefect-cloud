@@ -229,10 +229,10 @@ def login_server() -> Generator[Any, None, None]:
         def process_post(
             self, path: str, data: dict[str, Any]
         ) -> str | None | LoginError:
-            if path == "/success":
-                return data.get("api_key") or None
-            elif path == "/failure":
-                return LoginError("Login cancelled by user")
+            if path == "/failure":
+                raise LoginError("Login cancelled by user")
+
+            return data.get("api_key") or None
 
     with callback_server(handler_class=LoginHandler) as callback_ctx:
         yield callback_ctx
