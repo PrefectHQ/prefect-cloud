@@ -56,9 +56,6 @@ def prompt_select_from_list(prompt: str, options: list[str]) -> str:
             no_wrap=True,
         )
 
-        if scroll_offset > 0:
-            table.add_row("[bright_black]  ↑ More options above")
-
         for i, option in enumerate(visible_options, start=scroll_offset):
             if isinstance(option, tuple):
                 display_option = option[1]
@@ -70,9 +67,6 @@ def prompt_select_from_list(prompt: str, options: list[str]) -> str:
             else:
                 table.add_row("  " + display_option)
 
-        if visible_range_end < len(options):
-            table.add_row("[bright_black]  ↓ More options below")
-
         return table
 
     with Live(build_table(), auto_refresh=False, console=console) as live:
@@ -80,9 +74,9 @@ def prompt_select_from_list(prompt: str, options: list[str]) -> str:
             key = readchar.readkey()
 
             if key == readchar.key.UP:
-                current_idx = max(0, current_idx - 1)
+                current_idx = (current_idx - 1) % len(options)
             elif key == readchar.key.DOWN:
-                current_idx = min(len(options) - 1, current_idx + 1)
+                current_idx = (current_idx + 1) % len(options)
             elif key == readchar.key.PAGE_UP:
                 current_idx = max(0, current_idx - page_size)
             elif key == readchar.key.PAGE_DOWN:
