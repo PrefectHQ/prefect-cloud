@@ -5,6 +5,8 @@ import typer
 import tzlocal
 from rich.table import Table
 from rich.text import Text
+from rich.columns import Columns
+from rich.panel import Panel
 
 from prefect_cloud import auth, deployments
 from prefect_cloud.cli import completions
@@ -254,13 +256,11 @@ async def deploy(
             )
 
         deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
-        run_cmd = f"$ prefect-cloud run {function}/{deployment_name}"
-        schedule_cmd = (
-            f"$ prefect-cloud schedule {function}/{deployment_name} '<CRON SCHEDULE>'"
-        )
+        run_cmd = f"prefect-cloud run {function}/{deployment_name}"
+        schedule_cmd = f"prefect-cloud schedule {function}/{deployment_name} <SCHEDULE>"
 
         app.print(
-            f"Deployed [cyan]{deployment_name} to Prefect Cloud!\n",
+            f"Deployed [bold cyan]{deployment_name}[/] to Prefect Cloud 🎉\n\n",
             f"Runs of this deployment will "
             f"clone [bold][cyan]{repo}[/cyan][/bold] to "
             f"execute [bold][cyan]{function}[/cyan][/bold] ",
@@ -269,13 +269,29 @@ async def deploy(
         )
 
         app.print(
-            f"[bold]Run[/bold] it with: [bold][cyan]{run_cmd}[/cyan][/bold]\n",
-            f"[bold]Schedule[/bold] it with: [bold][cyan]{schedule_cmd}[/cyan][/bold]\n",
-            "[bold]View[/bold] it at: ",
+            "View it at: ",
             Text(deployment_url, style="link", justify="left"),
             soft_wrap=True,
             sep="",
         )
+
+        run_panel = Panel(
+            Text(run_cmd, style="bold green"),
+            title="Run",
+            border_style="green",
+            padding=(1, 2),
+        )
+
+        schedule_panel = Panel(
+            Text(schedule_cmd, style="bold blue"),
+            title="Schedule",
+            border_style="blue",
+            padding=(1, 2),
+        )
+
+        # Display panels side by side if there's enough space, otherwise stacked
+        app.print("\nCommands:")
+        app.print(Columns([run_panel, schedule_panel], expand=True))
 
         if work_pool.is_paused:
             work_pool_url = f"{ui_url}/work-pools"
@@ -336,7 +352,7 @@ async def run(
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
 
     app.print(
-        f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─► View:",
+        f"Started flow run [bold cyan]{flow_run.name}[/] 🚀\nView at: ",
         Text(flow_run_url, style="link", justify="left"),
         soft_wrap=True,
     )
