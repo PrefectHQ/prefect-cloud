@@ -222,6 +222,25 @@ class PrefectCloudTyper(typer.Typer):
         """Get the currently active progress bar if any."""
         return self._current_progress
 
+    @contextmanager
+    def suppress_progress(self) -> Generator[None, None, None]:
+        """
+        Context manager that temporarily suppresses the current progress bar.
+        Restores the original progress bar after exiting the context.
+
+        Example:
+            with app.suppress_progress():
+                # code that shouldn't display progress
+        """
+        if self._current_progress:
+            self._current_progress.stop()
+
+        try:
+            yield
+        finally:
+            if self._current_progress:
+                self._current_progress.start()
+
     def print(self, *args: Any, **kwargs: Any) -> None:
         """Print a message unless quiet mode is enabled."""
         if not self.quiet:
