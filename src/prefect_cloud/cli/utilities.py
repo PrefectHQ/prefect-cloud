@@ -129,7 +129,7 @@ class PrefectCloudTyper(typer.Typer):
                 raise  # Do not capture click or typer exceptions
             except Exception:
                 traceback.print_exc()
-                self.exit_with_error("An exception occurred.")
+                self.exit_with_error("An error occurred.")
 
         return wrapper
 

@@ -14,14 +14,18 @@ async def setup():
     """
     Setup Prefect Cloud GitHub integration
     """
-    app.print("Setting up Prefect Cloud GitHub integration...")
-    async with await get_prefect_cloud_client() as client:
-        await install_github_app_interactively(client)
-        repos = await client.get_github_repositories()
-        repos_list = "\n".join([f"  - {repo}" for repo in repos])
-        app.exit_with_success(
-            f"[bold]Setup complete! You can now deploy from the following repositories:\n{repos_list}"
-        )
+
+    with app.create_progress() as progress:
+        progress.add_task("Setting up Prefect Cloud GitHub integration...")
+        async with await get_prefect_cloud_client() as client:
+            await install_github_app_interactively(client)
+            repos = await client.get_github_repositories()
+            repos_list = "\n".join([f"  - {repo}" for repo in repos])
+            app.exit_with_success(
+                f"[bold]✓[/] Prefect Cloud Github integration complete!\n\n"
+                f"Connected repositories:\n"
+                f"{repos_list}"
+            )
 
 
 @github_app.command()
@@ -34,10 +38,11 @@ async def ls():
 
         if not repos:
             app.exit_with_error(
-                "No repositories found! "
-                "Install the Prefect Cloud GitHub App with `prefect-cloud github setup`."
+                "No repositories found!\n\n"
+                "Install the Prefect Cloud GitHub App with:\n"
+                "prefect-cloud github setup"
             )
 
-        app.print("You can deploy from the following repositories:")
-        for repo in repos:
-            app.print(f"  - {repo}")
+        repos = await client.get_github_repositories()
+        repos_list = "\n".join([f"- {repo}" for repo in repos])
+        app.exit_with_success(f"Connected repositories:\n{repos_list}")

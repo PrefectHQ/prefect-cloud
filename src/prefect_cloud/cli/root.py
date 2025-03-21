@@ -155,7 +155,7 @@ async def deploy(
 
     async with await auth.get_prefect_cloud_client() as client:
         with app.create_progress() as progress:
-            task = progress.add_task("Inspecting code...")
+            task = progress.add_task("Connecting to repo...")
             env_vars = process_key_value_pairs(env)
             parameter_defaults = process_key_value_pairs(parameters, as_json=True)
             pull_steps: list[dict[str, Any]] = []
@@ -192,11 +192,12 @@ async def deploy(
                     pull_steps.extend(github_ref.public_repo_pull_steps())
             except FileNotFound:
                 app.exit_with_error(
-                    f"Unable to access file {filepath} in {github_ref.owner}/{github_ref.repo}. "
-                    f"Make sure the file exists and is accessible.\n"
-                    f"If this is a private repository, you can:\n"
-                    f"1. Install the Prefect Cloud GitHub App with `prefect-cloud github setup` (recommended)\n"
-                    f"2. Pass credentials with `--credentials` flag",
+                    f"Unable to access file [bold]{filepath}[/] in [bold]{github_ref.owner}/{github_ref.repo}[/]. "
+                    f"Make sure the file exists and is accessible.\n\n"
+                    f"If this is a private repository, you can\n"
+                    f"1. [bold](recommended)[/] Install the Prefect Cloud GitHub App with:\n"
+                    "prefect-cloud github setup\n"
+                    f"2. Pass credentials directly via  --credentials",
                 )
 
             # Process function parameters
@@ -213,7 +214,7 @@ async def deploy(
             progress.update(task, description="Provisioning infrastructure...")
             work_pool = await client.ensure_managed_work_pool()
 
-            progress.update(task, description="Deploying code...")
+            progress.update(task, description="Deploying...")
 
             # Create Deployment
             if dependencies:
@@ -252,17 +253,14 @@ async def deploy(
                 parameters=parameter_defaults,
             )
 
-            progress.update(task, completed=True, description="Code deployed!")
-
         deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
-        run_cmd = f"prefect-cloud run {function}/{deployment_name}"
+        run_cmd = f"$ prefect-cloud run {function}/{deployment_name}"
         schedule_cmd = (
-            f"prefect-cloud schedule {function}/{deployment_name} '<CRON SCHEDULE>'"
+            f"$ prefect-cloud schedule {function}/{deployment_name} '<CRON SCHEDULE>'"
         )
 
         app.print(
-            f"[bold]Deployed [cyan]{deployment_name}[/cyan] to Prefect Cloud! 🎉[/bold]\n",
-            "\n",
+            f"Deployed [cyan]{deployment_name} to Prefect Cloud!\n",
             f"Runs of this deployment will "
             f"clone [bold][cyan]{repo}[/cyan][/bold] to "
             f"execute [bold][cyan]{function}[/cyan][/bold] ",
@@ -351,7 +349,7 @@ async def run(
     if work_pool.is_paused:
         app.print(
             "\n",
-            "[bold][orange1]Note:[/orange1][/bold] Your managed work pool is",
+            "[bold][orange1]Note:[/orange1][/bold] Your work pool is",
             "currently [bold]paused[/bold]. This will prevent the deployment "
             "from running until it is [bold]resumed[/bold].  Visit",
             Text(work_pool_url, style="link", justify="left"),
@@ -383,6 +381,14 @@ async def schedule(
             help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
         ),
     ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ):
     """
     Set a deployment to run on a schedule
@@ -397,10 +403,13 @@ async def schedule(
         Remove schedule:
         $ prefect-cloud schedule flow_name/deployment_name none
     """
+    app.quiet = quiet
+
     parameters = parameters or []
 
     func_kwargs = process_key_value_pairs(parameters, as_json=True)
     await deployments.schedule(deployment, schedule, func_kwargs)
+    app.exit_with_success("[bold]✓[/] Deployment scheduled")
 
 
 @app.command(rich_help_panel="Deploy")
@@ -411,11 +420,22 @@ async def unschedule(
             help="Name or ID of the deployment to remove schedules from",
         ),
     ],
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ):
     """
     Remove deployment schedules
     """
+    app.quiet = quiet
+
     await deployments.schedule(deployment, "none")
+    app.exit_with_success("[bold]✓[/] Deployment unscheduled")
 
 
 @app.command(rich_help_panel="Deploy")
@@ -484,11 +504,22 @@ async def delete(
             autocompletion=completions.complete_deployment,
         ),
     ],
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ):
     """
     Delete a deployment
     """
+    app.quiet = quiet
+
     await deployments.delete(deployment)
+    app.exit_with_success("[bold]✓[/] Deployment deleted")
 
 
 @app.command(rich_help_panel="Auth")
