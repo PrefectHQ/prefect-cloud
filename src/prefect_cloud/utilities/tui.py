@@ -1,6 +1,7 @@
 import sys
 
 import readchar
+from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
@@ -26,9 +27,8 @@ def prompt_select_from_list(prompt: str, options: list[str]) -> str:
     Returns:
         str: the selected option
     """
-    from prefect_cloud.cli.root import app
 
-    console = app.console
+    console = Console()
 
     current_idx = 0
     selected_option = None
@@ -89,6 +89,8 @@ def prompt_select_from_list(prompt: str, options: list[str]) -> str:
                     table.add_row("  " + display_option)
 
         return table
+
+    from prefect_cloud.cli.root import app
 
     with app.suppress_progress():
         with Live(build_table(), auto_refresh=False, console=console) as live:
