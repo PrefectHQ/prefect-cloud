@@ -38,9 +38,8 @@ def test_github_setup(mock_outgoing_calls):
         command=["github", "setup"],
         expected_code=0,
         expected_output_contains=[
-            "Setting up Prefect Cloud GitHub integration...",
-            "Setup complete!",
-            "You can now deploy from the following repositories:",
+            "✓ Prefect Cloud Github integration complete",
+            "Connected repositories:",
             "- owner/repo1",
             "- owner/repo2",
         ],
@@ -55,11 +54,9 @@ def test_github_setup_no_repositories(mock_outgoing_calls):
 
     invoke_and_assert(
         command=["github", "setup"],
-        expected_code=0,
+        expected_code=1,
         expected_output_contains=[
-            "Setting up Prefect Cloud GitHub integration...",
-            "Setup complete!",
-            "You can now deploy from the following repositories:",
+            "✗ No repositories found, integration may have unsuccessful"
         ],
     )
 
@@ -75,7 +72,7 @@ def test_github_ls_with_repositories(mock_outgoing_calls):
         command=["github", "ls"],
         expected_code=0,
         expected_output_contains=[
-            "You can deploy from the following repositories:",
+            "Connected repositories:",
             "- owner/repo1",
             "- owner/repo2",
             "- owner/repo3",
@@ -93,9 +90,9 @@ def test_github_ls_no_repositories(mock_outgoing_calls):
         command=["github", "ls"],
         expected_code=1,
         expected_output_contains=[
-            "No repositories found!",
-            "Install the Prefect Cloud GitHub App with `prefect-cloud",
-            "github setup`.",
+            "No repositories found.",
+            "Install the Prefect Cloud GitHub App with:",
+            "prefect-cloud github setup",
         ],
     )
 

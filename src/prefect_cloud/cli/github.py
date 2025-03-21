@@ -20,12 +20,18 @@ async def setup():
         async with await get_prefect_cloud_client() as client:
             await install_github_app_interactively(client)
             repos = await client.get_github_repositories()
-            repos_list = "\n".join([f"  - {repo}" for repo in repos])
-            app.exit_with_success(
-                f"[bold]✓[/] Prefect Cloud Github integration complete!\n\n"
-                f"Connected repositories:\n"
-                f"{repos_list}"
-            )
+
+            if repos:
+                repos_list = "\n".join([f"  - {repo}" for repo in repos])
+                app.exit_with_success(
+                    f"[bold]✓[/] Prefect Cloud Github integration complete\n\n"
+                    f"Connected repositories:\n"
+                    f"{repos_list}"
+                )
+            else:
+                app.exit_with_error(
+                    "[bold]✗[/] No repositories found, integration may have unsuccessful"
+                )
 
 
 @github_app.command()
@@ -38,7 +44,7 @@ async def ls():
 
         if not repos:
             app.exit_with_error(
-                "No repositories found!\n\n"
+                "No repositories found.\n\n"
                 "Install the Prefect Cloud GitHub App with:\n"
                 "prefect-cloud github setup"
             )
