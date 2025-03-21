@@ -20,7 +20,12 @@ class CallbackContext:
 
     def wait_for_callback(self) -> Any:
         """Wait for a callback result."""
-        return self.queue.get()
+        result = self.queue.get()
+
+        if isinstance(result, Exception):
+            raise result
+
+        return result
 
 
 class CallbackServerHandler(BaseHTTPRequestHandler):
@@ -42,8 +47,10 @@ class CallbackServerHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
-        query_params = parse_qs(urlparse(self.path).query)
-        result = self.process_get(query_params)
+        parts = urlparse(self.path)
+        query_params = parse_qs(parts.query)
+        path = parts.path
+        result = self.process_get(path, query_params)
 
         self.send_response(200)
         self.send_header("Content-type", "text/html")
@@ -62,7 +69,8 @@ class CallbackServerHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length) if content_length > 0 else b"{}"
         data: dict[str, Any] = json.loads(body) if body else {}
-        result = self.process_post(data)
+        path = urlparse(self.path).path
+        result = self.process_post(path, data)
 
         self.send_response(200)
         self.add_cors_headers()
@@ -70,11 +78,11 @@ class CallbackServerHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"{}")
         self.result_queue.put(result)
 
-    def process_get(self, query_params: dict[str, list[str]]) -> Any:
+    def process_get(self, path: str, query_params: dict[str, list[str]]) -> Any:
         """Process GET request and return a result to be put in the queue."""
         return None
 
-    def process_post(self, data: dict[str, Any]) -> Any:
+    def process_post(self, path: str, data: dict[str, Any]) -> Any:
         """
         Process POST request and return a result to be put in the queue.
         """

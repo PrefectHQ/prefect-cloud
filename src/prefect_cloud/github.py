@@ -9,12 +9,15 @@ from urllib.parse import quote, urlparse
 from httpx import AsyncClient
 
 from prefect_cloud.auth import CLOUD_UI_URL, get_account_id
-from prefect_cloud.cli.utilities import exit_with_error
 from prefect_cloud.client import PrefectCloudClient
 from prefect_cloud.utilities.callback import callback_server
 
 
 class FileNotFound(Exception):
+    pass
+
+
+class InferRepoError(Exception):
     pass
 
 
@@ -210,7 +213,7 @@ def infer_repo_url() -> str:
         return url
 
     except (subprocess.CalledProcessError, ValueError):
-        exit_with_error(
+        raise InferRepoError(
             "No repository specified, and this directory doesn't appear to be a "
             "GitHub repository.  Specify --from to indicate where Prefect Cloud will "
             "download your code from."

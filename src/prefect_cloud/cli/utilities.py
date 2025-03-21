@@ -6,61 +6,21 @@ import json
 import threading
 import traceback
 from collections.abc import Coroutine
-from typing import Any, Callable, NoReturn, TypeVar
+from typing import Any, Callable, NoReturn, TypeVar, Generator, ContextManager
+from contextlib import contextmanager
 
 import typer
 from click import ClickException
 from rich.console import Console
-from rich.progress import Progress
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.theme import Theme
-
-from prefect_cloud.utilities.exception import MissingProfileError
 
 
 T = TypeVar("T")
 
 
-def exit_with_error(
-    message: str | Exception, progress: Progress | None = None
-) -> NoReturn:
-    from prefect_cloud.cli.root import app
-
-    if progress:
-        progress.stop()
-    app.console.print(message, style="red")
-    raise typer.Exit(1)
-
-
-def exit_with_success(
-    message: str | Exception, progress: Progress | None = None
-) -> NoReturn:
-    from prefect_cloud.cli.root import app
-
-    if progress:
-        progress.stop()
-    app.console.print(message, style="green")
-    raise typer.Exit(0)
-
-
-def with_cli_exception_handling(fn: Callable[..., Any]) -> Callable[..., Any]:
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        try:
-            return fn(*args, **kwargs)
-        except (typer.Exit, typer.Abort, ClickException):
-            raise  # Do not capture click or typer exceptions
-        except MissingProfileError as exc:
-            exit_with_error(exc)
-        except Exception:
-            traceback.print_exc()
-            exit_with_error("An exception occurred.")
-
-    return wrapper
-
-
 def process_key_value_pairs(
     pairs: list[str] | None,
-    progress: Progress | None = None,
     as_json: bool = False,
 ) -> dict[str, Any] | dict[str, str]:
     """
@@ -104,7 +64,7 @@ def process_key_value_pairs(
             result[key] = value
 
     if invalid_pairs:
-        exit_with_error(f"Invalid key value pairs: {invalid_pairs}", progress)
+        raise ValueError(f"Invalid key value pairs: {invalid_pairs}")
 
     return result  # type: ignore
 
@@ -115,6 +75,7 @@ class PrefectCloudTyper(typer.Typer):
     """
 
     console: Console
+    quiet: bool = False
 
     def __init__(
         self,
@@ -127,6 +88,7 @@ class PrefectCloudTyper(typer.Typer):
             theme=Theme({"prompt.choices": "bold blue"}),
             color_system="auto",
         )
+        self._current_progress: Progress | None = None
 
     def add_typer(
         self,
@@ -153,6 +115,23 @@ class PrefectCloudTyper(typer.Typer):
         return super().add_typer(
             typer_instance, *args, no_args_is_help=no_args_is_help, **kwargs
         )
+
+    def _with_cli_exception_handling(
+        self, fn: Callable[..., Any]
+    ) -> Callable[..., Any]:
+        """Internal wrapper to handle exceptions in CLI commands."""
+
+        @functools.wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return fn(*args, **kwargs)
+            except (typer.Exit, typer.Abort, ClickException):
+                raise  # Do not capture click or typer exceptions
+            except Exception:
+                traceback.print_exc()
+                self.exit_with_error("An exception occurred.")
+
+        return wrapper
 
     def command(
         self,
@@ -190,7 +169,7 @@ class PrefectCloudTyper(typer.Typer):
             else:
                 wrapped_fn = original_fn
 
-            wrapped_fn = with_cli_exception_handling(wrapped_fn)
+            wrapped_fn = self._with_cli_exception_handling(wrapped_fn)
             # register fn with its original name
             command_decorator = super(PrefectCloudTyper, self).command(
                 name=name, *args, **kwargs
@@ -218,6 +197,61 @@ class PrefectCloudTyper(typer.Typer):
             soft_wrap=not soft_wrap,
             force_interactive=prompt,
         )
+
+    def create_progress(self, *columns: Any, **kwargs: Any) -> ContextManager[Progress]:
+        """Create a progress indicator that respects quiet mode and tracks in context."""
+        if not columns:
+            columns = (SpinnerColumn(), TextColumn("[dim]{task.description}"))
+
+        @contextmanager
+        def progress_maker() -> Generator[Progress, None, None]:
+            old_progress = self._current_progress
+
+            prog = Progress(*columns, transient=True, disable=self.quiet, **kwargs)
+            self._current_progress = prog
+
+            try:
+                with prog:
+                    yield prog
+            finally:
+                self._current_progress = old_progress
+
+        return progress_maker()
+
+    def get_current_progress(self) -> Progress | None:
+        """Get the currently active progress bar if any."""
+        return self._current_progress
+
+    def print(self, *args: Any, **kwargs: Any) -> None:
+        """Print a message unless quiet mode is enabled."""
+        if not self.quiet:
+            self.console.print(*args, **kwargs)
+
+    def error(self, message: str | Exception, progress: Progress | None = None) -> None:
+        """Print an error message unless quiet mode is enabled and exit."""
+        progress = progress or self._current_progress
+        if progress:
+            progress.stop()
+        if not self.quiet:
+            self.console.print(message, style="red")
+
+    def exit_with_error(self, message: str) -> NoReturn:
+        """Print an error message and exit with error code."""
+        self.error(message)
+        raise typer.Exit(1)
+
+    def success(self, message: str, progress: Progress | None = None) -> None:
+        """Print a success message unless quiet mode is enabled."""
+        progress = progress or self._current_progress
+        if progress:
+            progress.stop()
+        if not self.quiet:
+            self.console.print(message, style="green")
+
+    def exit_with_success(self, message: str) -> NoReturn:
+        """Print a success message and exit with success code."""
+        self.success(message)
+        raise typer.Exit(0)
 
 
 def run_sync(coro: Coroutine[Any, Any, T]) -> T:

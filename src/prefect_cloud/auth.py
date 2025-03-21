@@ -16,6 +16,10 @@ from prefect_cloud.utilities.tui import prompt_select_from_list
 from prefect_cloud.utilities.urls import extract_account_id, extract_workspace_id
 
 
+class LoginError(Exception):
+    pass
+
+
 def _get_cloud_urls() -> tuple[str, str]:
     """Get the appropriate Cloud UI and API URLs based on environment"""
 
@@ -85,6 +89,7 @@ class Me(BaseModel):
 
 async def login(api_key: str | None = None, workspace_id_or_slug: str | None = None):
     """Logs the user into Prefect Cloud interactively, setting their active profile"""
+
     if not api_key:
         api_key = get_api_key()
 
@@ -216,11 +221,18 @@ def login_server() -> Generator[Any, None, None]:
     """Runs a server to handle the login callback"""
 
     class LoginHandler(CallbackServerHandler):
-        def process_get(self, query_params: dict[str, list[str]]) -> str | None:
+        def process_get(
+            self, path: str, query_params: dict[str, list[str]]
+        ) -> str | None:
             return query_params.get("key", [""])[0] or None
 
-        def process_post(self, data: dict[str, Any]) -> str | None:
-            return data.get("api_key") or None
+        def process_post(
+            self, path: str, data: dict[str, Any]
+        ) -> str | None | LoginError:
+            if path == "/success":
+                return data.get("api_key") or None
+            elif path == "/failure":
+                return LoginError("Login cancelled by user")
 
     with callback_server(handler_class=LoginHandler) as callback_ctx:
         yield callback_ctx
