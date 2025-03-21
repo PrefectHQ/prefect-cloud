@@ -7,6 +7,7 @@ from respx import Router
 from prefect_cloud.auth import (
     login_interactively,
     login_server,
+    LoginError,
 )
 
 
@@ -62,7 +63,7 @@ def test_interactive_login_handles_missing_api_key_get(mock_webbrowser: Mock):
     assert result is None
 
 
-def test_interactive_login_handles_post_callback(
+def test_interactive_login_handles_post_callback_success(
     cloud_api: Router, mock_webbrowser: Mock
 ):
     """login_interactively() should handle the callback from the Cloud UI."""
@@ -71,13 +72,29 @@ def test_interactive_login_handles_post_callback(
     def simulate_callback(uri):
         parsed_uri = httpx.URL(uri)
         callback_url = parsed_uri.params.get("callback")
-        response = httpx.post(callback_url, json={"api_key": test_api_key})
+        response = httpx.post(callback_url + "/success", json={"api_key": test_api_key})
         assert response.status_code == 200
 
     mock_webbrowser.side_effect = simulate_callback
 
     result = login_interactively()
     assert result == test_api_key
+
+
+def test_interactive_login_handles_post_callback_cancelled(
+    cloud_api: Router, mock_webbrowser: Mock
+):
+    """login_interactively() should handle the callback from the Cloud UI."""
+
+    def simulate_callback(uri):
+        parsed_uri = httpx.URL(uri)
+        callback_url = parsed_uri.params.get("callback")
+        response = httpx.post(callback_url + "/failure")
+        assert response.status_code == 200
+
+    mock_webbrowser.side_effect = simulate_callback
+    with pytest.raises(LoginError):
+        login_interactively()
 
 
 def test_interactive_login_handles_missing_api_key_post(mock_webbrowser: Mock):

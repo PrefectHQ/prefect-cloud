@@ -3,7 +3,6 @@ from typing import Annotated, Any
 
 import typer
 import tzlocal
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
 
@@ -11,7 +10,6 @@ from prefect_cloud import auth, deployments
 from prefect_cloud.cli import completions
 from prefect_cloud.cli.utilities import (
     PrefectCloudTyper,
-    exit_with_error,
     process_key_value_pairs,
 )
 from prefect_cloud.dependencies import get_dependencies
@@ -139,6 +137,8 @@ async def deploy(
     Deploy with a requirements file:
     $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --with-requirements requirements.txt
     """
+    app.quiet = quiet
+
     # Initialize default values
     dependencies = dependencies or []
     env = env or []
@@ -151,24 +151,16 @@ async def deploy(
         filepath, function = function.split(":")
         filepath = filepath.lstrip("/")
     except ValueError:
-        exit_with_error("Invalid function. Expected path/to/file.py:function_name")
+        app.exit_with_error("Invalid function. Expected path/to/file.py:function_name")
 
     async with await auth.get_prefect_cloud_client() as client:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[cyan]{task.description}"),
-            transient=True,
-            disable=quiet,
-        ) as progress:
-            task = progress.add_task("Inspecting code...", total=None)
-            env_vars = process_key_value_pairs(env, progress=progress)
-            parameter_defaults = process_key_value_pairs(
-                parameters, progress=progress, as_json=True
-            )
+        with app.create_progress() as progress:
+            task = progress.add_task("Connecting to repo...")
+            env_vars = process_key_value_pairs(env)
+            parameter_defaults = process_key_value_pairs(parameters, as_json=True)
             pull_steps: list[dict[str, Any]] = []
             github_ref = GitHubRepo.from_url(repo)
 
-            # Get file contents
             try:
                 # via `--credentials`
                 if credentials:
@@ -199,13 +191,13 @@ async def deploy(
                     raw_contents = await github_ref.get_file_contents(filepath)
                     pull_steps.extend(github_ref.public_repo_pull_steps())
             except FileNotFound:
-                exit_with_error(
-                    f"Unable to access file {filepath} in {github_ref.owner}/{github_ref.repo}. "
-                    f"Make sure the file exists and is accessible.\n"
-                    f"If this is a private repository, you can:\n"
-                    f"1. Install the Prefect Cloud GitHub App with `prefect-cloud github setup` (recommended)\n"
-                    f"2. Pass credentials with `--credentials` flag",
-                    progress=progress,
+                app.exit_with_error(
+                    f"Unable to access file [bold]{filepath}[/] in [bold]{github_ref.owner}/{github_ref.repo}[/]. "
+                    f"Make sure the file exists and is accessible.\n\n"
+                    f"If this is a private repository, you can\n"
+                    f"1. [bold](recommended)[/] Install the Prefect Cloud GitHub App with:\n"
+                    "prefect-cloud github setup\n"
+                    f"2. Pass credentials directly via  --credentials",
                 )
 
             # Process function parameters
@@ -214,16 +206,15 @@ async def deploy(
                     raw_contents, function
                 )
             except ValueError:
-                exit_with_error(
+                app.exit_with_error(
                     f"Could not find function '{function}' in {filepath}",
-                    progress=progress,
                 )
 
             # Provision infrastructure
             progress.update(task, description="Provisioning infrastructure...")
             work_pool = await client.ensure_managed_work_pool()
 
-            progress.update(task, description="Deploying code...")
+            progress.update(task, description="Deploying...")
 
             # Create Deployment
             if dependencies:
@@ -262,44 +253,38 @@ async def deploy(
                 parameters=parameter_defaults,
             )
 
-            progress.update(task, completed=True, description="Code deployed!")
-
         deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
         run_cmd = f"prefect-cloud run {function}/{deployment_name}"
-        schedule_cmd = (
-            f"prefect-cloud schedule {function}/{deployment_name} '<CRON SCHEDULE>'"
+        schedule_cmd = f"prefect-cloud schedule {function}/{deployment_name} <SCHEDULE>"
+
+        app.print(
+            f"Deployed [bold cyan]{deployment_name}[/] to Prefect Cloud 🎉\n\n",
+            f"Runs of this deployment will "
+            f"clone [bold][cyan]{repo}[/cyan][/bold] to "
+            f"execute [bold][cyan]{function}[/cyan][/bold] ",
+            f"from [bold][cyan]{filepath}[/cyan][/bold].\n",
+            sep="",
         )
 
-        if not quiet:
-            app.console.print(
-                f"[bold]Deployed [cyan]{deployment_name}[/cyan] to Prefect Cloud! 🎉[/bold]\n",
-                "\n",
-                f"Runs of this deployment will "
-                f"clone [bold][cyan]{repo}[/cyan][/bold] to "
-                f"execute [bold][cyan]{function}[/cyan][/bold] ",
-                f"from [bold][cyan]{filepath}[/cyan][/bold].\n",
-                sep="",
-            )
+        app.print(
+            "View at: ",
+            Text(deployment_url, style="link", justify="left"),
+            soft_wrap=True,
+            sep="",
+        )
+        app.print("")
+        app.print(f"Run: [cyan]{run_cmd}[/cyan]\nSchedule: [cyan]{schedule_cmd}[/cyan]")
 
-            app.console.print(
-                f"[bold]Run[/bold] it with: [bold][cyan]{run_cmd}[/cyan][/bold]\n",
-                f"[bold]Schedule[/bold] it with: [bold][cyan]{schedule_cmd}[/cyan][/bold]\n",
-                "[bold]View[/bold] it at: ",
-                Text(deployment_url, style="link", justify="left"),
+        if work_pool.is_paused:
+            work_pool_url = f"{ui_url}/work-pools"
+            print()
+            app.print(
+                "[bold][orange1]Note:[/orange1][/bold] A deployment will not run while "
+                "its work pool is [bold]paused[/bold]. [bold]Resume[/bold] "
+                "the work pool at",
+                Text(work_pool_url, style="link", justify="left"),
                 soft_wrap=True,
-                sep="",
             )
-
-            if work_pool.is_paused:
-                work_pool_url = f"{ui_url}/work-pools"
-                print()
-                app.console.print(
-                    "[bold][orange1]Note:[/orange1][/bold] A deployment will not run while "
-                    "its work pool is [bold]paused[/bold]. [bold]Resume[/bold] "
-                    "the work pool at",
-                    Text(work_pool_url, style="link", justify="left"),
-                    soft_wrap=True,
-                )
 
         return deployment_id
 
@@ -323,6 +308,14 @@ async def run(
             show_default=False,
         ),
     ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ):
     """
     Run a deployment immediately
@@ -330,6 +323,8 @@ async def run(
     Examples:
         $ prefect-cloud run flow_name/deployment_name
     """
+    app.quiet = quiet
+
     parameters = parameters or []
 
     ui_url, _, _ = await auth.get_cloud_urls_or_login()
@@ -338,8 +333,8 @@ async def run(
     flow_run = await deployments.run(deployment, func_kwargs)
     flow_run_url = f"{ui_url}/runs/flow-run/{flow_run.id}"
 
-    app.console.print(
-        f"[bold]Started flow run [cyan]{flow_run.name}[/cyan]! 🚀[/bold]\n└─► View:",
+    app.print(
+        f"Started flow run [bold cyan]{flow_run.name}[/] 🚀\nView at:",
         Text(flow_run_url, style="link", justify="left"),
         soft_wrap=True,
     )
@@ -350,9 +345,9 @@ async def run(
 
     work_pool_url = f"{ui_url}/work-pools"
     if work_pool.is_paused:
-        app.console.print(
+        app.print(
             "\n",
-            "[bold][orange1]Note:[/orange1][/bold] Your managed work pool is",
+            "[bold][orange1]Note:[/orange1][/bold] Your work pool is",
             "currently [bold]paused[/bold]. This will prevent the deployment "
             "from running until it is [bold]resumed[/bold].  Visit",
             Text(work_pool_url, style="link", justify="left"),
@@ -384,6 +379,14 @@ async def schedule(
             help="Function parameter in <NAME=VALUE> format (can be used multiple times)",
         ),
     ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ):
     """
     Set a deployment to run on a schedule
@@ -398,10 +401,13 @@ async def schedule(
         Remove schedule:
         $ prefect-cloud schedule flow_name/deployment_name none
     """
+    app.quiet = quiet
+
     parameters = parameters or []
 
     func_kwargs = process_key_value_pairs(parameters, as_json=True)
     await deployments.schedule(deployment, schedule, func_kwargs)
+    app.exit_with_success("[bold]✓[/] Deployment scheduled")
 
 
 @app.command(rich_help_panel="Deploy")
@@ -412,11 +418,22 @@ async def unschedule(
             help="Name or ID of the deployment to remove schedules from",
         ),
     ],
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ):
     """
     Remove deployment schedules
     """
+    app.quiet = quiet
+
     await deployments.schedule(deployment, "none")
+    app.exit_with_success("[bold]✓[/] Deployment unscheduled")
 
 
 @app.command(rich_help_panel="Deploy")
@@ -443,7 +460,7 @@ async def ls():
         elif isinstance(schedule.schedule, RRuleSchedule):  # type: ignore[reportUnnecessaryIsInstance]
             description = f"{schedule.schedule.rrule}"
         else:
-            app.console.print(f"Unknown schedule type: {type(schedule.schedule)}")
+            app.print(f"Unknown schedule type: {type(schedule.schedule)}")
             description = "Unknown"
 
         return Text(f"{prefix} {description}", style=style)
@@ -468,9 +485,9 @@ async def ls():
             str(deployment.id),
         )
 
-    app.console.print(table)
+    app.print(table)
 
-    app.console.print(
+    app.print(
         "* Cron cheatsheet: minute hour day-of-month month day-of-week",
         style="dim",
     )
@@ -485,11 +502,22 @@ async def delete(
             autocompletion=completions.complete_deployment,
         ),
     ],
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ):
     """
     Delete a deployment
     """
+    app.quiet = quiet
+
     await deployments.delete(deployment)
+    app.exit_with_success("[bold]✓[/] Deployment deleted")
 
 
 @app.command(rich_help_panel="Auth")
@@ -510,6 +538,14 @@ async def login(
             help="Workspace ID or slug",
         ),
     ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
 ):
     """
     Log in to Prefect Cloud
@@ -524,15 +560,36 @@ async def login(
         Login to specific workspace:
         $ prefect-cloud login --workspace your-workspace
     """
-    await auth.login(api_key=key, workspace_id_or_slug=workspace)
+    app.quiet = quiet
+
+    with app.create_progress() as progress:
+        progress.add_task("Logging in to Prefect Cloud...")
+        try:
+            await auth.login(api_key=key, workspace_id_or_slug=workspace)
+        except auth.LoginError:
+            app.exit_with_error("[bold]✗[/] Unable to complete login to Prefect Cloud")
+
+    app.exit_with_success("[bold]✓[/] Logged in to Prefect Cloud")
 
 
 @app.command(rich_help_panel="Auth")
-def logout():
+def logout(
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress output",
+        ),
+    ] = False,
+):
     """
     Log out of Prefect Cloud
     """
+    app.quiet = quiet
+
     auth.logout()
+    app.exit_with_success("[bold]✓[/] Logged out of Prefect Cloud")
 
 
 @app.command(rich_help_panel="Auth")
@@ -564,9 +621,9 @@ async def whoami() -> None:
     table.add_row("API URL", api_url)
     table.add_row("API Key", redacted(api_key))
 
-    app.console.print(table)
+    app.print(table)
 
-    app.console.print("")
+    app.print("")
 
     table = Table(title="Accounts and Workspaces", show_header=True)
     table.add_column("Account")
@@ -602,4 +659,4 @@ async def whoami() -> None:
                 Text(str(workspace.workspace_id)),
             )
 
-    app.console.print(table)
+    app.print(table)

@@ -3,6 +3,8 @@ from queue import Queue
 import httpx
 from typing import Any, Dict
 
+import pytest
+
 from prefect_cloud.utilities.callback import (
     CallbackServerHandler,
     callback_server,
@@ -31,10 +33,10 @@ def test_callback_server_custom_handler():
     """Callback server should support custom handlers."""
 
     class TestHandler(CallbackServerHandler):
-        def process_get(self, query_params: Dict[str, list[str]]) -> str:
+        def process_get(self, path: str, query_params: Dict[str, list[str]]) -> str:
             return "test_get_handler"
 
-        def process_post(self, data: Dict[str, Any]) -> str:
+        def process_post(self, path: str, data: Dict[str, Any]) -> str:
             return "test_post_handler"
 
     with callback_server(handler_class=TestHandler) as callback_ctx:
@@ -55,7 +57,9 @@ def test_callback_server_get_parameters():
     """Callback server should extract parameters from GET request."""
 
     class TestGetHandler(CallbackServerHandler):
-        def process_get(self, query_params: Dict[str, list[str]]) -> Dict[str, str]:
+        def process_get(
+            self, path: str, query_params: Dict[str, list[str]]
+        ) -> Dict[str, str]:
             return {
                 "param1": query_params.get("param1", [""])[0],
                 "param2": query_params.get("param2", [""])[0],
@@ -75,7 +79,7 @@ def test_callback_server_post_json():
     """Callback server should parse JSON data from POST request."""
 
     class TestPostHandler(CallbackServerHandler):
-        def process_post(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        def process_post(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
             return data
 
     with callback_server(handler_class=TestPostHandler) as callback_ctx:
@@ -91,7 +95,7 @@ def test_callback_server_wait_for_callback():
     """wait_for_callback() should return the first result from the queue."""
 
     class TestDelayedHandler(CallbackServerHandler):
-        def process_get(self, query_params: Dict[str, list[str]]) -> str:
+        def process_get(self, path: str, query_params: Dict[str, list[str]]) -> str:
             return "result"
 
     with callback_server(handler_class=TestDelayedHandler) as callback_ctx:
@@ -106,7 +110,7 @@ def test_callback_server_multiple_requests():
     counter = 0
 
     class CountingHandler(CallbackServerHandler):
-        def process_get(self, query_params: Dict[str, list[str]]) -> int:
+        def process_get(self, path: str, query_params: Dict[str, list[str]]) -> int:
             nonlocal counter
             counter += 1
             return counter
@@ -141,3 +145,23 @@ def test_callback_server_empty_post():
 
         # Default handler returns None
         assert callback_ctx.wait_for_callback() is None
+
+
+def test_callback_context_reraise_exceptions():
+    """wait_for_callback() should reraise any exceptions returned by the handler."""
+
+    class TestExceptionRaisedHandler(CallbackServerHandler):
+        def process_get(self, path: str, query_params: Dict[str, list[str]]):
+            raise ValueError("everything has get wrong!")
+
+        def process_post(self, path: str, data: Dict[str, list[str]]):
+            raise ValueError("everything has post wrong!")
+
+    with callback_server(handler_class=TestExceptionRaisedHandler) as callback_ctx:
+        with pytest.raises(ValueError, match="everything has get wrong!"):
+            httpx.get(callback_ctx.url)
+            callback_ctx.wait_for_callback()
+
+        with pytest.raises(ValueError, match="everything has post wrong!"):
+            httpx.post(callback_ctx.url)
+            callback_ctx.wait_for_callback()
