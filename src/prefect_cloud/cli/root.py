@@ -7,6 +7,7 @@ from rich.table import Table
 from rich.text import Text
 
 from prefect_cloud import auth, deployments
+from prefect_cloud.py_versions import PythonVersion
 from prefect_cloud.cli import completions
 from prefect_cloud.cli.utilities import (
     PrefectCloudTyper,
@@ -91,13 +92,22 @@ async def deploy(
             show_default=False,
         ),
     ] = None,
+    with_python: Annotated[
+        PythonVersion,
+        typer.Option(
+            "--with-python",
+            help="Python version to use at runtime",
+            rich_help_panel="Dependencies",
+            case_sensitive=False,
+        ),
+    ] = PythonVersion.PY_312,
     env: Annotated[
         list[str] | None,
         typer.Option(
             "--env",
             "-e",
             help="Environment variables in <KEY=VALUE> format (can be used multiple times)",
-            rich_help_panel="Configuration",
+            rich_help_panel="Environment",
             show_default=False,
         ),
     ] = None,
@@ -249,6 +259,7 @@ async def deploy(
                 parameter_schema=parameter_schema,
                 job_variables={
                     "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
+                    "image": PythonVersion.to_prefect_image(with_python),
                 },
                 parameters=parameter_defaults,
             )
