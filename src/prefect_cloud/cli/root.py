@@ -79,7 +79,7 @@ async def deploy(
             "--with",
             "-d",
             help=("Python dependencies to include (can be used multiple times)"),
-            rich_help_panel="Dependencies",
+            rich_help_panel="Environment",
             show_default=False,
         ),
     ] = None,
@@ -88,7 +88,7 @@ async def deploy(
         typer.Option(
             "--with-requirements",
             help="Path to repository's requirements file",
-            rich_help_panel="Dependencies",
+            rich_help_panel="Environment",
             show_default=False,
         ),
     ] = None,
@@ -97,7 +97,7 @@ async def deploy(
         typer.Option(
             "--with-python",
             help="Python version to use at runtime",
-            rich_help_panel="Dependencies",
+            rich_help_panel="Environment",
             case_sensitive=False,
         ),
     ] = PythonVersion.PY_312,
@@ -117,6 +117,8 @@ async def deploy(
             "--parameter",
             "-p",
             help="Parameter default values in <NAME=VALUE> format (can be used multiple times)",
+            rich_help_panel="Environment",
+            show_default=False,
         ),
     ] = None,
     deployment_name: Annotated[
