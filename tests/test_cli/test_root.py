@@ -1078,3 +1078,82 @@ def test_deploy_programmatic_with_custom_names():
                 client.create_managed_deployment.assert_called_once()
                 call_kwargs = client.create_managed_deployment.call_args[1]
                 assert call_kwargs["deployment_name"] == "custom-deployment-name"
+
+
+def test_deploy_with_python_version():
+    """Test deployment with custom Python version"""
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+        client = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = client
+
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
+        client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
+
+        # Mock GitHub token retrieval to return None (using public repo path)
+        client.get_github_token = AsyncMock(return_value=None)
+
+        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
+            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
+
+            with patch(
+                "prefect_cloud.github.GitHubRepo.get_file_contents"
+            ) as mock_content:
+                mock_content.return_value = textwrap.dedent("""
+                    def test_function():
+                        pass
+                """).lstrip()
+
+                # Test with explicit Python version
+                invoke_and_assert(
+                    command=[
+                        "deploy",
+                        "test.py:test_function",
+                        "--from",
+                        "github.com/owner/repo",
+                        "--with-python",
+                        "3.10",
+                    ],
+                    expected_code=0,
+                    expected_output_contains=[
+                        "Deployed test_function",
+                        "prefect-cloud run test_function/test_function",
+                        "https://ui.url/deployments/deployment/test-deployment-id",
+                    ],
+                )
+
+                # Verify the Python version was passed correctly
+                client.create_managed_deployment.assert_called_once()
+                job_variables = client.create_managed_deployment.call_args[1][
+                    "job_variables"
+                ]
+                assert job_variables["image"] == "prefecthq/prefect:3-python3.10"
+
+                # Reset the mock for the next test
+                client.create_managed_deployment.reset_mock()
+
+                # Test with default Python version (3.12)
+                invoke_and_assert(
+                    command=[
+                        "deploy",
+                        "test.py:test_function",
+                        "--from",
+                        "github.com/owner/repo",
+                    ],
+                    expected_code=0,
+                    expected_output_contains=[
+                        "Deployed test_function",
+                        "prefect-cloud run test_function/test_function",
+                        "https://ui.url/deployments/deployment/test-deployment-id",
+                    ],
+                )
+
+                # Verify the default Python version was used
+                client.create_managed_deployment.assert_called_once()
+                job_variables = client.create_managed_deployment.call_args[1][
+                    "job_variables"
+                ]
+                assert job_variables["image"] == "prefecthq/prefect:3-python3.12"
