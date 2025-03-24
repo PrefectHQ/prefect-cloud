@@ -3,9 +3,9 @@ from typing import Annotated, Any
 
 import typer
 import tzlocal
-from rich.table import Table
 from rich.text import Text
-
+from rich.align import Align
+from rich.table import Table
 from prefect_cloud import auth, deployments
 from prefect_cloud.cli import completions
 from prefect_cloud.cli.utilities import (
@@ -148,14 +148,14 @@ async def deploy(
 
     # Split function_path into file path and function name
     try:
-        filepath, function = function.split(":")
+        filepath, function_name = function.split(":")
         filepath = filepath.lstrip("/")
     except ValueError:
         app.exit_with_error("Invalid function. Expected path/to/file.py:function_name")
 
     async with await auth.get_prefect_cloud_client() as client:
         with app.create_progress() as progress:
-            task = progress.add_task("Connecting to repo...")
+            task = progress.add_task("Preparing deployment...")
             env_vars = process_key_value_pairs(env)
             parameter_defaults = process_key_value_pairs(parameters, as_json=True)
             pull_steps: list[dict[str, Any]] = []
@@ -170,9 +170,7 @@ async def deploy(
                     block_name = safe_block_name(
                         f"{github_ref.owner}-{github_ref.repo}-credentials"
                     )
-                    await client.create_credentials_secret(
-                        name=block_name, credentials=credentials
-                    )
+                    auth_method = "GitHub Personal Access Token"
                     pull_steps.extend(
                         github_ref.private_repo_via_block_pull_steps(block_name)
                     )
@@ -183,12 +181,14 @@ async def deploy(
                     raw_contents = await github_ref.get_file_contents(
                         filepath, credentials_via_app
                     )
+                    auth_method = "GitHub App Integration"
                     pull_steps.extend(
                         github_ref.private_repo_via_github_app_pull_steps()
                     )
                 # Otherwise assume public repo
                 else:
                     raw_contents = await github_ref.get_file_contents(filepath)
+                    auth_method = "Public Repository (no auth)"
                     pull_steps.extend(github_ref.public_repo_pull_steps())
             except FileNotFound:
                 app.exit_with_error(
@@ -203,23 +203,23 @@ async def deploy(
             # Process function parameters
             try:
                 parameter_schema = get_parameter_schema_from_content(
-                    raw_contents, function
+                    raw_contents, function_name
                 )
             except ValueError:
                 app.exit_with_error(
-                    f"Could not find function '{function}' in {filepath}",
+                    f"Could not find function '{function_name}' in {filepath}",
                 )
 
             # Provision infrastructure
             progress.update(task, description="Provisioning infrastructure...")
             work_pool = await client.ensure_managed_work_pool()
 
-            progress.update(task, description="Deploying...")
-
-            # Create Deployment
+            # Prepare dependency information for preview
+            dependency_list = []
             if dependencies:
+                dependency_list = get_dependencies(dependencies)
                 quoted_dependencies = [
-                    f"'{dependency}'" for dependency in get_dependencies(dependencies)
+                    f"'{dependency}'" for dependency in dependency_list
                 ]
                 pull_steps.append(
                     {
@@ -230,6 +230,7 @@ async def deploy(
                     }
                 )
             if with_requirements:
+                dependency_list.append(f"Requirements file: {with_requirements}")
                 pull_steps.append(
                     {
                         "prefect.deployments.steps.run_shell_script": {
@@ -239,11 +240,30 @@ async def deploy(
                     }
                 )
 
-            deployment_name = deployment_name or f"{function}"
+            # Format parameter schema for display
+            formatted_params = []
+            if parameter_schema and "properties" in parameter_schema:
+                for param_name, param_details in parameter_schema["properties"].items():
+                    param_type = param_details.get("type", "any")
+                    default = parameter_defaults.get(param_name, "Not specified")
+                    formatted_params.append(
+                        {"name": param_name, "type": param_type, "default": default}
+                    )
+
+            deployment_name = deployment_name or f"{function_name}"
+
+            # Complete the progress to clear it
+            progress.update(task, completed=100)
+
+        # Continue with deployment - no confirmation step
+        with app.create_progress() as progress:
+            task = progress.add_task("Deploying...", total=100)
+
+            # Create Deployment
             deployment_id = await client.create_managed_deployment(
                 deployment_name=deployment_name,
                 filepath=filepath,
-                function=function,
+                function=function_name,
                 work_pool_name=work_pool.name,
                 pull_steps=pull_steps,
                 parameter_schema=parameter_schema,
@@ -253,38 +273,133 @@ async def deploy(
                 parameters=parameter_defaults,
             )
 
+            progress.update(task, completed=100)
+
         deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
-        run_cmd = f"prefect-cloud run {function}/{deployment_name}"
-        schedule_cmd = f"prefect-cloud schedule {function}/{deployment_name} <SCHEDULE>"
 
-        app.print(
-            f"Deployed [bold cyan]{deployment_name}[/] to Prefect Cloud 🎉\n\n",
-            f"Runs of this deployment will "
-            f"clone [bold][cyan]{repo}[/cyan][/bold] to "
-            f"execute [bold][cyan]{function}[/cyan][/bold] ",
-            f"from [bold][cyan]{filepath}[/cyan][/bold].\n",
-            sep="",
-        )
-
-        app.print(
-            "View at: ",
-            Text(deployment_url, style="link", justify="left"),
-            soft_wrap=True,
-            sep="",
-        )
         app.print("")
-        app.print(f"Run: [cyan]{run_cmd}[/cyan]\nSchedule: [cyan]{schedule_cmd}[/cyan]")
+        flow_text = Align.center(
+            f"[white]DEPLOY SUCCESSFUL:[/] [bold bright_blue]{deployment_name}[/] [white]WILL EXECUTE FROM[/] [bold bright_green]SOURCE[/] [white]ON[/] [bold orange_red1]COMPUTE[/] [white]WITH[/] [bold bright_yellow]ENVIRONMENT[/]"
+        )
+        app.print(flow_text)
 
-        if work_pool.is_paused:
-            work_pool_url = f"{ui_url}/work-pools"
-            print()
-            app.print(
-                "[bold][orange1]Note:[/orange1][/bold] A deployment will not run while "
-                "its work pool is [bold]paused[/bold]. [bold]Resume[/bold] "
-                "the work pool at",
-                Text(work_pool_url, style="link", justify="left"),
-                soft_wrap=True,
+        flow_table = Table(
+            show_header=False,
+            box=None,
+            padding=(0, 4),
+            expand=True,
+        )
+
+        flow_table.add_column(ratio=1, justify="center")
+        flow_table.add_column(ratio=1, justify="center")
+        flow_table.add_column(ratio=1, justify="center")
+
+        source_content = Text.assemble(
+            ("", "bold bright_green"),
+            ("\n📂 SOURCE", "bold bright_green"),
+            ("\nFunction: ", "bold white"),
+            (f"{function_name}", "cyan"),
+            ("\nFile: ", "bold white"),
+            (f"{filepath}", "cyan"),
+            ("\nRepository: ", "bold white"),
+            (f"{github_ref.owner}/{github_ref.repo}", "cyan"),
+        )
+
+        if github_ref.ref:
+            source_content.append_text(
+                Text.assemble(
+                    ("\nBranch/Ref: ", "bold white"), (f"{github_ref.ref}", "cyan")
+                )
             )
+
+        source_content.append_text(
+            Text.assemble(("\nAuth: ", "bold white"), (f"{auth_method}", "cyan"))
+        )
+
+        compute_content = Text.assemble(
+            ("", "bold orange_red1"),
+            ("\n🚀 COMPUTE", "bold orange_red1"),
+            ("\nWork Pool: ", "bold white"),
+            (f"{work_pool.name}", "cyan"),
+            ("\nType: ", "bold white"),
+            (f"{work_pool.type}", "cyan"),
+            ("\nStatus: ", "bold white"),
+            (
+                f"{'Active' if not work_pool.is_paused else 'Paused'}",
+                "green" if not work_pool.is_paused else "red",
+            ),
+        )
+
+        env_title = "\n📦 ENVIRONMENT"
+
+        if not dependency_list and not env_vars and not formatted_params:
+            env_content = Text.assemble(
+                ("", "bold bright_yellow"),
+                (env_title, "bold bright_yellow"),
+                ("\nNo dependencies, environment", "white"),
+                ("\nvariables, or parameters", "white"),
+                ("\nspecified", "white"),
+            )
+        else:
+            env_content = Text(env_title, style="bold bright_yellow")
+
+            if dependency_list:
+                env_content.append_text(Text("\nDependencies:", style="bold white"))
+                for dep in dependency_list:
+                    env_content.append_text(Text(f"\n  • {dep}", style="cyan"))
+
+            if env_vars:
+                if dependency_list:
+                    env_content.append_text(Text("\n"))
+                env_content.append_text(
+                    Text("\nEnvironment Variables:", style="bold white")
+                )
+                for key, value in env_vars.items():
+                    env_content.append_text(
+                        Text(f"\n  • {key}={redacted(str(value))}", style="cyan")
+                    )
+
+            if formatted_params:
+                if dependency_list or env_vars:
+                    env_content.append_text(Text("\n"))
+                env_content.append_text(Text("\nParameters:", style="bold white"))
+                for param in formatted_params:
+                    default_display = str(param["default"])
+                    if isinstance(param["default"], str) and len(default_display) > 20:
+                        default_display = default_display[:17] + "..."
+                    env_content.append_text(
+                        Text(
+                            f"\n  • {param['name']} ({param['type']}): {default_display}",
+                            style="cyan",
+                        )
+                    )
+
+        flow_table.add_row(source_content, compute_content, env_content)
+        app.print(flow_table)
+
+        view_panel = Table.grid(padding=(1, 2))
+        view_panel.add_column(style="bold bright_blue", justify="center")
+
+        view_text = Text.assemble(
+            ("🔍 View Deployment in Prefect Cloud: ", "bold bright_blue"),
+            (deployment_url, "link cyan underline"),
+        )
+
+        view_panel.add_row(view_text)
+        app.print(view_panel)
+        app.print("")
+
+        command_table = Table(
+            show_header=False,
+            box=None,
+            padding=(0, 2),
+            expand=True,
+            title_style="bold bright_blue",
+            title_justify="center",
+        )
+
+        command_table.add_column(style="bold bright_blue", justify="right")
+        command_table.add_column(style="cyan", justify="left")
 
         return deployment_id
 
