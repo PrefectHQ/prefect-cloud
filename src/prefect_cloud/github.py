@@ -268,7 +268,7 @@ def get_local_repo_urls() -> list[str]:
 
 
 def _get_prefect_cloud_github_app() -> str:
-    """Get the Github app name based on environment"""
+    """Get the GitHub app name based on environment"""
 
     env = os.environ.get("CLOUD_ENV")
 

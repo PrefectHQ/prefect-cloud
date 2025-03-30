@@ -24,10 +24,10 @@ async def setup():
             if repos:
                 repos_list = "\n".join([f"  - {repo}" for repo in repos])
                 app.exit_with_success(
-                    f"[bold]✓[/] Prefect Cloud GitHub integration complete\n\n"
+                    "[bold]✓[/] Prefect Cloud GitHub integration complete\n\n"
                     f"Connected repositories:\n{repos_list}\n\n"
-                    f"Deploy a function from your repo with:\n"
-                    f"prefect-cloud deploy <file.py:function> --from <github repo>"
+                    "Deploy a function from your repo with:\n"
+                    "prefect-cloud deploy <file.py:function> --from <github repo>"
                 )
             else:
                 app.exit_with_error(
@@ -56,7 +56,7 @@ async def ls():
                 "• The integration is pending GitHub admin approval\n\n"
                 "To get started:\n"
                 "  Run: prefect-cloud github setup\n\n"
-                "If you've already installed the GitHub App:\n"
+                "If the integration is pending:\n"
                 "  Once a GitHub admin approves the installation, you can deploy from your repos using:\n"
                 "  prefect-cloud deploy <file.py:function> --from <github repo>"
             )
