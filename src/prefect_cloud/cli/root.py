@@ -53,10 +53,10 @@ async def deploy(
             default_factory=infer_repo_url,
             autocompletion=completions.complete_repo,
             help=(
-                "GitHub repository URL. e.g.\n\n"
-                "• Repo: github.com/owner/repo\n\n"
-                "• Specific branch: github.com/owner/repo/tree/<branch>\n\n"
-                "• Specific commit: github.com/owner/repo/tree/<commit-sha>\n\n"
+                "GitHub repository reference in any of these formats:\n\n"
+                "• owner/repo\n\n"
+                "• owner/repo/tree/branch\n\n"
+                "• owner/repo/tree/commit-sha\n\n"
                 "If not provided, the repository of the current directory will be used."
             ),
             rich_help_panel="Source",
