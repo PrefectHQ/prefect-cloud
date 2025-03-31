@@ -70,6 +70,33 @@ class TestGitHubRepo:
         assert ref.repo == "example-repo"
         assert ref.ref == "main"
 
+    def test_from_url_simple_owner_repo(self):
+        """Test simple owner/repo format without github.com."""
+        url = "ExampleOwner/example-repo"
+        ref = GitHubRepo.from_url(url)
+
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"
+        assert ref.ref == "main"
+
+    def test_from_url_owner_repo_with_ref(self):
+        """Test owner/repo/tree/ref format without github.com."""
+        url = "ExampleOwner/example-repo/tree/feature-branch"
+        ref = GitHubRepo.from_url(url)
+
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"
+        assert ref.ref == "feature-branch"
+
+    def test_from_url_owner_repo_with_git_extension(self):
+        """Test owner/repo.git format."""
+        url = "ExampleOwner/example-repo.git"
+        ref = GitHubRepo.from_url(url)
+
+        assert ref.owner == "ExampleOwner"
+        assert ref.repo == "example-repo"
+        assert ref.ref == "main"
+
     def test_from_url_invalid_github(self):
         """Test that non-GitHub URLs are rejected."""
         with pytest.raises(ValueError, match="Not a GitHub URL"):
