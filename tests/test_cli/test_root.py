@@ -1130,7 +1130,7 @@ def test_deploy_with_python_version():
                 job_variables = client.create_managed_deployment.call_args[1][
                     "job_variables"
                 ]
-                assert job_variables["image"] == "prefecthq/prefect:3-python3.10"
+                assert job_variables["image"] == "prefecthq/prefect-client:3-python3.10"
 
                 # Reset the mock for the next test
                 client.create_managed_deployment.reset_mock()
@@ -1156,4 +1156,4 @@ def test_deploy_with_python_version():
                 job_variables = client.create_managed_deployment.call_args[1][
                     "job_variables"
                 ]
-                assert job_variables["image"] == "prefecthq/prefect:3-python3.12"
+                assert job_variables["image"] == "prefecthq/prefect-client:3-python3.12"

@@ -195,7 +195,7 @@ async def test_get_default_base_job_template_for_managed_work_pool(
     mock_template = {
         "job_configuration": {
             "command": "python {{ entrypoint }}",
-            "image": "prefecthq/prefect:latest",
+            "image": "prefecthq/prefect-client:3-latest",
         }
     }
 

@@ -8,4 +8,4 @@ class PythonVersion(str, Enum):
     PY_39 = "3.9"
 
     def to_prefect_image(self) -> str:
-        return f"prefecthq/prefect:3-python{self.value}"
+        return f"prefecthq/prefect-client:3-python{self.value}"
