@@ -116,7 +116,7 @@ async def deploy(
             "--secret",
             "-s",
             help="Secrets in <KEY=VALUE> format (can be used multiple times). "
-            "Will be exposed in flow run environment as environment variables.",
+            "Will be injected into runtime as environment variables.",
             rich_help_panel="Environment",
             show_default=False,
         ),

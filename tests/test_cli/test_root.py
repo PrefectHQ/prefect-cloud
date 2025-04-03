@@ -363,6 +363,99 @@ def test_deploy_with_env_vars():
                     assert job_variables["env"]["DEBUG"] == "true"
 
 
+def test_deploy_with_secrets():
+    """Test deployment with secrets"""
+    with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
+        client = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = client
+
+        client.ensure_managed_work_pool = AsyncMock(
+            return_value=WorkPool(
+                type="prefect:managed", name="test-pool", is_paused=False
+            )
+        )
+        client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
+
+        # Mock create_or_replace_secret to return predictable names
+        client.create_or_replace_secret = AsyncMock(
+            side_effect=lambda name, secret: f"secret-{name}"
+        )
+
+        # Mock GitHub token retrieval to return None (using public repo path)
+        client.get_github_token = AsyncMock(return_value=None)
+
+        with patch("prefect_cloud.cli.root.auth.get_cloud_urls_or_login") as mock_urls:
+            mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
+
+            # Mock the pull steps generation to return a simple single step
+            with patch(
+                "prefect_cloud.github.GitHubRepo.public_repo_pull_steps"
+            ) as mock_pull_steps:
+                mock_pull_steps.return_value = [
+                    {
+                        "prefect.deployments.steps.git_clone": {
+                            "id": "git-clone",
+                            "repository": "https://github.com/owner/repo.git",
+                            "branch": "main",
+                        }
+                    }
+                ]
+
+                with patch(
+                    "prefect_cloud.github.GitHubRepo.get_file_contents"
+                ) as mock_content:
+                    mock_content.return_value = textwrap.dedent("""
+                        def test_function():
+                            pass
+                    """).lstrip()
+
+                    invoke_and_assert(
+                        command=[
+                            "deploy",
+                            "test.py:test_function",
+                            "--from",
+                            "github.com/owner/repo",
+                            "--with",
+                            "prefect",
+                            "--secret",
+                            "DB_PASSWORD=super-secret",
+                            "--secret",
+                            "API_TOKEN=top-secret",
+                        ],
+                        expected_code=0,
+                        expected_output_contains=[
+                            "Deployed test_function",
+                            "prefect-cloud run test_function/test_function",
+                            "prefect-cloud schedule test_function/test_function <SCHEDULE>",
+                            "https://ui.url/deployments/deployment/test-deployment-id",
+                            "github.com/owner/repo",
+                        ],
+                    )
+
+                    # Verify secrets were created
+                    assert client.create_or_replace_secret.call_count == 2
+                    client.create_or_replace_secret.assert_any_call(
+                        name="db-password", secret="super-secret"
+                    )
+                    client.create_or_replace_secret.assert_any_call(
+                        name="api-token", secret="top-secret"
+                    )
+
+                    # Verify secret references were passed correctly as environment variables
+                    client.create_managed_deployment.assert_called_once()
+                    job_variables = client.create_managed_deployment.call_args[1][
+                        "job_variables"
+                    ]
+                    assert (
+                        job_variables["env"]["DB_PASSWORD"]
+                        == "{{ prefect.blocks.secret.secret-db-password }}"
+                    )
+                    assert (
+                        job_variables["env"]["API_TOKEN"]
+                        == "{{ prefect.blocks.secret.secret-api-token }}"
+                    )
+
+
 def test_deploy_with_parameters():
     """Test deployment with parameters"""
     with patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client:
@@ -516,7 +609,7 @@ def test_deploy_with_private_repo_credentials():
 
                 # Verify credentials were stored with new parameter naming
                 client.create_or_replace_secret.assert_called_once_with(
-                    name="owner-repo-credentials", credentials="github_token"
+                    name="owner-repo-credentials", secret="github_token"
                 )
 
 
