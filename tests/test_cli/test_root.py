@@ -16,6 +16,7 @@ from prefect_cloud.cli.root import app
 from prefect_cloud.github import FileNotFound
 from prefect_cloud.schemas.objects import WorkPool
 from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.utilities.blocks import safe_block_name
 
 
 def check_contains(cli_result: Result, content: str, should_contain: bool) -> None:
@@ -378,7 +379,7 @@ def test_deploy_with_secrets():
 
         # Mock create_or_replace_secret to return predictable names
         client.create_or_replace_secret = AsyncMock(
-            side_effect=lambda name, secret: f"secret-{name}"
+            side_effect=lambda name, secret: safe_block_name(name)
         )
 
         # Mock GitHub token retrieval to return None (using public repo path)
@@ -435,10 +436,10 @@ def test_deploy_with_secrets():
                     # Verify secrets were created
                     assert client.create_or_replace_secret.call_count == 2
                     client.create_or_replace_secret.assert_any_call(
-                        name="db-password", secret="super-secret"
+                        name="DB_PASSWORD", secret="super-secret"
                     )
                     client.create_or_replace_secret.assert_any_call(
-                        name="api-token", secret="top-secret"
+                        name="API_TOKEN", secret="top-secret"
                     )
 
                     # Verify secret references were passed correctly as environment variables
@@ -448,11 +449,11 @@ def test_deploy_with_secrets():
                     ]
                     assert (
                         job_variables["env"]["DB_PASSWORD"]
-                        == "{{ prefect.blocks.secret.secret-db-password }}"
+                        == "{{ prefect.blocks.secret.db-password }}"
                     )
                     assert (
                         job_variables["env"]["API_TOKEN"]
-                        == "{{ prefect.blocks.secret.secret-api-token }}"
+                        == "{{ prefect.blocks.secret.api-token }}"
                     )
 
 
