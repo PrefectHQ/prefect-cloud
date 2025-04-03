@@ -23,6 +23,7 @@ from prefect_cloud.schemas.objects import (
 )
 from prefect_cloud.schemas.responses import DeploymentResponse
 from prefect_cloud.settings import settings
+from prefect_cloud.utilities.blocks import safe_block_name
 from prefect_cloud.utilities.callables import ParameterSchema
 from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
 from prefect_cloud.utilities.generics import validate_list
@@ -724,8 +725,9 @@ class PrefectCloudClient(httpx.AsyncClient):
 
         return deployment_id
 
-    async def create_credentials_secret(self, name: str, credentials: str) -> None:
+    async def create_or_replace_secret(self, name: str, secret: str) -> str:
         try:
+            safe_name = safe_block_name(name)
             secret_block_type = await self.read_block_type_by_slug("secret")
             secret_block_schema = (
                 await self.get_most_recent_block_schema_for_block_type(
@@ -735,15 +737,16 @@ class PrefectCloudClient(httpx.AsyncClient):
             if secret_block_schema is None:
                 raise ValueError("No secret block schema found")
 
-            await self.upsert_block_document(
+            block = await self.upsert_block_document(
                 BlockDocumentCreate(
-                    name=name,
-                    data={"value": credentials},
+                    name=safe_name,
+                    data={"value": secret},
                     block_type_id=secret_block_type.id,
                     block_schema_id=secret_block_schema.id,
                 )
             )
-            return None
+            assert block.name
+            return block.name
         except HTTPStatusError:
             raise
 

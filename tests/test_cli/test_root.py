@@ -477,7 +477,7 @@ def test_deploy_with_private_repo_credentials():
             )
         )
         client.create_managed_deployment = AsyncMock(return_value="test-deployment-id")
-        client.create_credentials_secret = AsyncMock()
+        client.create_or_replace_secret = AsyncMock()
 
         # Mock GitHub token retrieval to return None (not installed)
         client.get_github_token = AsyncMock(return_value=None)
@@ -515,7 +515,7 @@ def test_deploy_with_private_repo_credentials():
                 )
 
                 # Verify credentials were stored with new parameter naming
-                client.create_credentials_secret.assert_called_once_with(
+                client.create_or_replace_secret.assert_called_once_with(
                     name="owner-repo-credentials", credentials="github_token"
                 )
 
