@@ -25,7 +25,6 @@ from prefect_cloud.schemas.objects import (
     IntervalSchedule,
     RRuleSchedule,
 )
-from prefect_cloud.utilities.blocks import safe_block_name
 from prefect_cloud.utilities.callables import get_parameter_schema_from_content
 from prefect_cloud.utilities.tui import redacted
 
@@ -111,6 +110,17 @@ async def deploy(
             show_default=False,
         ),
     ] = None,
+    secret: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--secret",
+            "-s",
+            help="Secrets in <KEY=VALUE> format (can be used multiple times). "
+            "Will be injected into runtime as environment variables.",
+            rich_help_panel="Environment",
+            show_default=False,
+        ),
+    ] = None,
     parameters: Annotated[
         list[str] | None,
         typer.Option(
@@ -169,6 +179,7 @@ async def deploy(
         with app.create_progress() as progress:
             task = progress.add_task("Connecting to repo...")
             env_vars = process_key_value_pairs(env)
+            secrets = process_key_value_pairs(secret)
             parameter_defaults = process_key_value_pairs(parameters, as_json=True)
             pull_steps: list[dict[str, Any]] = []
             github_ref = GitHubRepo.from_url(repo)
@@ -179,14 +190,14 @@ async def deploy(
                     raw_contents = await github_ref.get_file_contents(
                         filepath, credentials
                     )
-                    block_name = safe_block_name(
-                        f"{github_ref.owner}-{github_ref.repo}-credentials"
-                    )
-                    await client.create_credentials_secret(
-                        name=block_name, credentials=credentials
+                    credentials_block_name = await client.create_or_replace_secret(
+                        name=f"{github_ref.owner}-{github_ref.repo}-credentials",
+                        secret=credentials,
                     )
                     pull_steps.extend(
-                        github_ref.private_repo_via_block_pull_steps(block_name)
+                        github_ref.private_repo_via_block_pull_steps(
+                            credentials_block_name
+                        )
                     )
                 # via GitHub App installation
                 elif credentials_via_app := await client.get_github_token(
@@ -221,6 +232,14 @@ async def deploy(
                 app.exit_with_error(
                     f"Could not find function '{function}' in {filepath}",
                 )
+
+            # Handle secrets
+            secret_env = {}
+            for key, value in secrets.items():
+                secret_name = await client.create_or_replace_secret(
+                    name=key, secret=value
+                )
+                secret_env[key] = "{{ prefect.blocks.secret." + secret_name + " }}"
 
             # Provision infrastructure
             progress.update(task, description="Provisioning infrastructure...")
@@ -260,7 +279,7 @@ async def deploy(
                 pull_steps=pull_steps,
                 parameter_schema=parameter_schema,
                 job_variables={
-                    "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars,
+                    "env": {"PREFECT_CLOUD_API_URL": api_url} | env_vars | secret_env,
                     "image": PythonVersion.to_prefect_image(with_python),
                 },
                 parameters=parameter_defaults,
