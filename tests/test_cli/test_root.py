@@ -693,21 +693,12 @@ def test_run():
         work_pool_name="test-pool",
         schedules=[],
     )
-
     with (
         patch("prefect_cloud.auth.get_prefect_cloud_client") as mock_client,
         patch("prefect_cloud.deployments.get_deployment", return_value=mock_deployment),
     ):
         client = AsyncMock()
         mock_client.return_value.__aenter__.return_value = client
-
-        # Mock the client.create_flow_run_from_deployment_id method
-        flow_run_mock = MagicMock()
-        flow_run_mock.id = "test-run-id"
-        flow_run_mock.name = "test-run"
-        client.create_flow_run_from_deployment_id = AsyncMock(
-            return_value=flow_run_mock
-        )
 
         client.read_work_pool_by_name = AsyncMock(
             return_value=WorkPool(
@@ -720,29 +711,34 @@ def test_run():
         ) as mock_urls:
             mock_urls.return_value = ("https://ui.url", "https://api.url", "test-key")
 
-            # Remove this patch since we want to test the real implementation
-            # with patch("prefect_cloud.cli.deployments.run") as mock_run:
+            with patch("prefect_cloud.cli.deployments.deployments.run") as mock_run:
+                # Create a proper mock for the flow run
+                flow_run_mock = MagicMock()
+                flow_run_mock.id = "test-run-id"
+                flow_run_mock.name = "test-run"
 
-            invoke_and_assert(
-                command=[
-                    "run",
-                    "test_deployment",
-                    "--parameter",
-                    "x=1",
-                    "--parameter",
-                    "y=test",
-                ],
-                expected_code=0,
-                expected_output_contains=[
-                    "Started flow run test-run",
-                    "View at: https://ui.url/runs/flow-run/test-run-id",
-                ],
-            )
+                mock_run.return_value = flow_run_mock
 
-            # Verify parameters were passed correctly
-            client.create_flow_run_from_deployment_id.assert_called_once()
-            call_args = client.create_flow_run_from_deployment_id.call_args
-            assert call_args.kwargs.get("parameters") == {"x": 1, "y": "test"}
+                invoke_and_assert(
+                    command=[
+                        "run",
+                        "test_deployment",
+                        "--parameter",
+                        "x=1",
+                        "--parameter",
+                        "y=test",
+                    ],
+                    expected_code=0,
+                    expected_output_contains=[
+                        "Started flow run test-run",
+                        "View at: https://ui.url/runs/flow-run/test-run-id",
+                    ],
+                )
+
+                # Verify the deployment was run with parameters
+                mock_run.assert_called_once_with(
+                    "test_deployment", {"x": 1, "y": "test"}
+                )
 
 
 def test_deploy_with_dependencies():
