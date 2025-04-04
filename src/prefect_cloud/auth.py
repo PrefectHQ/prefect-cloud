@@ -11,6 +11,7 @@ import toml
 from pydantic import BaseModel, TypeAdapter
 
 from prefect_cloud.client import PrefectCloudClient, SyncPrefectCloudClient
+from prefect_cloud.schemas.objects import Me
 from prefect_cloud.utilities.callback import CallbackServerHandler, callback_server
 from prefect_cloud.utilities.tui import prompt_select_from_list
 from prefect_cloud.utilities.urls import extract_account_id, extract_workspace_id
@@ -77,14 +78,6 @@ class Workspace(BaseModel):
         return (
             f"{CLOUD_API_URL}/accounts/{self.account_id}/workspaces/{self.workspace_id}"
         )
-
-
-class Me(BaseModel):
-    id: UUID
-    email: str
-    first_name: str
-    last_name: str
-    handle: str
 
 
 async def login(api_key: str | None = None, workspace_id_or_slug: str | None = None):
