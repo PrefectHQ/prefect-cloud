@@ -177,3 +177,11 @@ class RRuleSchedule(BaseModel):
 
 
 SCHEDULE_TYPES: TypeAlias = Union[IntervalSchedule, CronSchedule, RRuleSchedule]
+
+
+class Me(BaseModel):
+    id: UUID
+    email: str
+    first_name: str
+    last_name: str
+    handle: str
