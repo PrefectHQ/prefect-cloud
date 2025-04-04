@@ -1,5 +1,5 @@
 from prefect_cloud.auth import get_prefect_cloud_client
-from prefect_cloud.cli.root import app
+from prefect_cloud.cli.deployments import app
 from prefect_cloud.cli.utilities import (
     PrefectCloudTyper,
 )
