@@ -83,7 +83,7 @@ async def notify(
             "actions": [
                 {
                     "type": "send-email-notification",
-                    "subject": "Deployment failed",
+                    "subject": "{{ deployment.name}} failed",
                     "body": "Flow run {{ flow.name }}/{{ flow_run.name }} observed in state `{{ flow_run.state.name }}` "
                     "at {{ flow_run.state.timestamp }}.\n"
                     "Flow ID: {{ flow_run.flow_id }}\n"
