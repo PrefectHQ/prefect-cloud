@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import re
+from datetime import timedelta
 from typing import Any, Optional, TypeAlias, Union
 from uuid import UUID, uuid4
 
@@ -185,3 +186,38 @@ class Me(BaseModel):
     first_name: str
     last_name: str
     handle: str
+
+
+class EventTrigger(BaseModel):
+    type: str = "event"
+    match: dict[str, Any] = Field(default_factory=dict)
+    match_related: dict[str, Any] = Field(default_factory=dict)
+    after: list[str] = Field(default_factory=list)
+    expect: list[str] = Field(default_factory=list)
+    for_each: list[str] = Field(default_factory=list)
+    posture: str = "Reactive"
+    threshold: int = 1
+    within: timedelta = timedelta(seconds=0)
+
+
+class SendEmailNotification(BaseModel):
+    type: str = "send-email-notification"
+    subject: str
+    body: str
+    emails: list[str]
+
+
+class Automation(BaseModel):
+    name: str
+    description: str = Field(default="")
+    enabled: bool = True
+    trigger: EventTrigger
+    actions: list[SendEmailNotification]
+    actions_on_trigger: list[Any] = Field(default_factory=list)
+    actions_on_resolve: list[Any] = Field(default_factory=list)
+    labels: dict[str, Any] = Field(default_factory=dict)
+    id: UUID
+    created: datetime.datetime
+    updated: datetime.datetime
+    account: UUID
+    workspace: UUID

@@ -9,9 +9,11 @@ from httpx import HTTPStatusError, RequestError
 from typing_extensions import TypeAlias
 
 from prefect_cloud.schemas.actions import (
+    AutomationCreate,
     BlockDocumentCreate,
 )
 from prefect_cloud.schemas.objects import (
+    Automation,
     BlockDocument,
     BlockSchema,
     BlockType,
@@ -26,7 +28,7 @@ from prefect_cloud.schemas.responses import DeploymentResponse
 from prefect_cloud.settings import settings
 from prefect_cloud.utilities.blocks import safe_block_name
 from prefect_cloud.utilities.callables import ParameterSchema
-from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
+from prefect_cloud.utilities.exceptions import ObjectAlreadyExists, ObjectNotFound
 from prefect_cloud.utilities.generics import validate_list
 
 if TYPE_CHECKING:
@@ -805,18 +807,40 @@ class PrefectCloudClient(httpx.AsyncClient):
             pass
         return None
 
-    async def create_automation(self, automation: dict[str, Any]) -> UUID:
+    async def create_automation(self, automation: AutomationCreate) -> Automation:
         try:
             response = await self.request(
                 "POST",
                 "/automations/",
-                json=automation,
+                json=automation.model_dump(mode="json"),
             )
             response.raise_for_status()
         except HTTPStatusError:
             raise
 
-        return UUID(response.json()["id"])
+        return Automation.model_validate_json(response.json())
+
+    async def list_automations(self) -> list[Automation]:
+        try:
+            response = await self.request(
+                "POST",
+                "/automations/filter",
+            )
+            response.raise_for_status()
+        except HTTPStatusError:
+            raise
+
+        return validate_list(Automation, response.json())
+
+    async def delete_automation(self, automation_id: UUID) -> None:
+        try:
+            response = await self.request(
+                "DELETE",
+                f"/automations/{automation_id}",
+            )
+            response.raise_for_status()
+        except HTTPStatusError:
+            raise
 
 
 class SyncPrefectCloudClient(httpx.Client):
