@@ -9,9 +9,11 @@ from httpx import HTTPStatusError, RequestError
 from typing_extensions import TypeAlias
 
 from prefect_cloud.schemas.actions import (
+    AutomationCreate,
     BlockDocumentCreate,
 )
 from prefect_cloud.schemas.objects import (
+    Automation,
     BlockDocument,
     BlockSchema,
     BlockType,
@@ -19,13 +21,14 @@ from prefect_cloud.schemas.objects import (
     DeploymentFlowRun,
     DeploymentSchedule,
     Flow,
+    Me,
     WorkPool,
 )
 from prefect_cloud.schemas.responses import DeploymentResponse
 from prefect_cloud.settings import settings
 from prefect_cloud.utilities.blocks import safe_block_name
 from prefect_cloud.utilities.callables import ParameterSchema
-from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
+from prefect_cloud.utilities.exceptions import ObjectAlreadyExists, ObjectNotFound
 from prefect_cloud.utilities.generics import validate_list
 
 if TYPE_CHECKING:
@@ -43,6 +46,37 @@ class PrefectCloudClient(httpx.AsyncClient):
         httpx_settings.setdefault("headers", {"Authorization": f"Bearer {api_key}"})
         httpx_settings.setdefault("base_url", api_url)
         super().__init__(**httpx_settings)
+
+    @property
+    def root_url(self) -> str:
+        """
+        Get the root API URL without account or workspace paths.
+
+        For URLs like "https://api.prefect.cloud/api/accounts/123/workspaces/456",
+        returns "https://api.prefect.cloud/api"
+        """
+        base_url = str(self.base_url)
+        parts = base_url.split("/api/")
+        if len(parts) > 1:
+            return f"{parts[0]}/api"
+        return base_url
+
+    async def root_request(
+        self, method: HTTP_METHODS, path: str, **kwargs: Any
+    ) -> httpx.Response:
+        """
+        Make a request to a root API endpoint.
+
+        Args:
+            method: HTTP method to use
+            path: Path to append to the root API URL
+            **kwargs: Additional arguments to pass to the request
+
+        Returns:
+            The HTTP response
+        """
+        url = f"{self.root_url}/{path.lstrip('/')}"
+        return await self.request(method, url, **kwargs)
 
     @property
     def account_url(self) -> str:
@@ -73,6 +107,15 @@ class PrefectCloudClient(httpx.AsyncClient):
         """
         url = f"{self.account_url}/{path.lstrip('/')}"
         return await self.request(method, url, **kwargs)
+
+    async def me(self) -> Me:
+        response = await self.root_request(
+            "GET",
+            "/me/",
+        )
+        response.raise_for_status()
+
+        return Me.model_validate_json(response.text)
 
     async def get_github_state_token(self, redirect_url: str | None = None) -> str:
         """
@@ -763,6 +806,41 @@ class PrefectCloudClient(httpx.AsyncClient):
         except Exception:
             pass
         return None
+
+    async def create_automation(self, automation: AutomationCreate) -> Automation:
+        try:
+            response = await self.request(
+                "POST",
+                "/automations/",
+                json=automation.model_dump(mode="json"),
+            )
+            response.raise_for_status()
+        except HTTPStatusError:
+            raise
+
+        return Automation.model_validate_json(response.json())
+
+    async def list_automations(self) -> list[Automation]:
+        try:
+            response = await self.request(
+                "POST",
+                "/automations/filter",
+            )
+            response.raise_for_status()
+        except HTTPStatusError:
+            raise
+
+        return validate_list(Automation, response.json())
+
+    async def delete_automation(self, automation_id: UUID) -> None:
+        try:
+            response = await self.request(
+                "DELETE",
+                f"/automations/{automation_id}",
+            )
+            response.raise_for_status()
+        except HTTPStatusError:
+            raise
 
 
 class SyncPrefectCloudClient(httpx.Client):

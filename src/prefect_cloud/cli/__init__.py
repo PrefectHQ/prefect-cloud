@@ -7,3 +7,4 @@
 from . import auth  # noqa: F401
 from . import deployments  # noqa: F401
 from . import github  # noqa: F401
+from . import notifications  # noqa: F401

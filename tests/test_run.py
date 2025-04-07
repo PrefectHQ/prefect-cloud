@@ -7,7 +7,7 @@ from httpx import Response
 from prefect_cloud import deployments
 from prefect_cloud.schemas.objects import DeploymentFlowRun
 from prefect_cloud.schemas.responses import DeploymentResponse
-from prefect_cloud.utilities.exception import ObjectNotFound
+from prefect_cloud.utilities.exceptions import ObjectNotFound
 
 
 @pytest.fixture

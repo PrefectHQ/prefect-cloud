@@ -3,7 +3,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from prefect_cloud.schemas.objects import CronSchedule
+from prefect_cloud.schemas.objects import (
+    CronSchedule,
+    EventTrigger,
+    SendEmailNotification,
+)
 from prefect_cloud.types import (
     Name,
     NonEmptyishName,
@@ -90,3 +94,14 @@ class DeploymentFlowRunCreate(BaseModel):
     )
     work_queue_name: Optional[str] = Field(default=None)
     job_variables: Optional[dict[str, Any]] = Field(default=None)
+
+
+class AutomationCreate(BaseModel):
+    name: str
+    description: str = Field(default="")
+    enabled: bool = True
+    trigger: EventTrigger
+    actions: list[SendEmailNotification]
+    actions_on_trigger: list[Any] = Field(default_factory=list)
+    actions_on_resolve: list[Any] = Field(default_factory=list)
+    labels: dict[str, Any] = Field(default_factory=dict)
