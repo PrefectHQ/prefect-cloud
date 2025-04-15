@@ -9,3 +9,9 @@ class PythonVersion(str, Enum):
 
     def to_prefect_image(self) -> str:
         return f"prefecthq/prefect-client:3-python{self.value}"
+
+    def __str__(self):
+        return self.value
+
+    def __repr__(self):
+        return self.value

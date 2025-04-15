@@ -4,7 +4,10 @@ from typing import Annotated, Any
 import typer
 import tzlocal
 from rich.table import Table
+from rich.align import Align
 from rich.text import Text
+from rich.console import Group
+from rich.panel import Panel
 
 from prefect_cloud import auth, deployments
 from prefect_cloud.py_versions import PythonVersion
@@ -147,10 +150,10 @@ async def deploy(
     Examples:
 
     Deploy a function:
-    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo
+    $ prefect-cloud deploy hello.py:my_function --from owner/repo
 
     Deploy with a requirements file:
-    $ prefect-cloud deploy flows/hello.py:my_function --from github.com/owner/repo --with-requirements requirements.txt
+    $ prefect-cloud deploy hello.py:my_function --from owner/repo --with-requirements requirements.txt
     """
     app.quiet = quiet
 
@@ -177,6 +180,7 @@ async def deploy(
             pull_steps: list[dict[str, Any]] = []
             github_ref = GitHubRepo.from_url(repo)
 
+            auth_method = None
             try:
                 # via `--credentials`
                 if credentials:
@@ -192,6 +196,7 @@ async def deploy(
                             credentials_block_name
                         )
                     )
+                    auth_method = "GitHub PAT"
                 # via GitHub App installation
                 elif credentials_via_app := await client.get_github_token(
                     github_ref.owner, github_ref.repo
@@ -202,10 +207,12 @@ async def deploy(
                     pull_steps.extend(
                         github_ref.private_repo_via_github_app_pull_steps()
                     )
+                    auth_method = "GitHub App"
                 # Otherwise assume public repo
                 else:
                     raw_contents = await github_ref.get_file_contents(filepath)
                     pull_steps.extend(github_ref.public_repo_pull_steps())
+                    auth_method = "Public Repo"
             except FileNotFound:
                 app.exit_with_error(
                     f"Unable to access file [bold]{filepath}[/] in [bold]{github_ref.owner}/{github_ref.repo}[/]. "
@@ -278,40 +285,71 @@ async def deploy(
                 parameters=parameter_defaults,
             )
 
-        deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
-        run_cmd = f"prefect-cloud run {function}/{deployment_name}"
-        schedule_cmd = f"prefect-cloud schedule {function}/{deployment_name} <SCHEDULE>"
+    compute_section = [
+        "[bold]Deployment will run --on:[/]",
+        f"[dim] » Work Pool:[/] {work_pool.name}",
+        f"[dim] » Type:[/] {work_pool.type}",
+        f"[dim] » Status:[/] {'PAUSED' if work_pool.is_paused else 'ACTIVE'}",
+    ]
 
-        app.print(
-            f"Deployed [bold cyan]{deployment_name}[/] to Prefect Cloud 🎉\n\n",
-            f"Runs of this deployment will "
-            f"clone [bold][cyan]{repo}[/cyan][/bold] to "
-            f"execute [bold][cyan]{function}[/cyan][/bold] ",
-            f"from [bold][cyan]{filepath}[/cyan][/bold].\n",
-            sep="",
+    source_section = [
+        "[bold]cloning --from:[/]",
+        f"[dim] » Repository:[/] {github_ref}",
+        f"[dim] » Entrypoint:[/] {filepath}:{function}",
+        f"[dim] » Auth Type:[/] {auth_method}",
+    ]
+
+    env_section = ["[bold]--with environment:[/]", f"[dim] » Python:[/] {with_python}"]
+
+    if dependencies or with_requirements:
+        dep_msg = []
+        if with_requirements:
+            dep_msg.append(f"from {with_requirements}")
+        if dependencies:
+            dep_msg.append(" + ".join(dependencies))
+        env_section.append(f"[dim] » Dependencies:[/] {' + '.join(dep_msg)}")
+
+    if env_vars or secret_env:
+        env_var_msg = []
+        for k, v in env_vars.items():
+            env_var_msg.append(f"{k}={v}")
+        for k, v in secret_env.items():
+            env_var_msg.append(f"{k}=*****")
+        env_section.append(
+            f"[dim] » Environment Variables:[/] {', '.join(env_var_msg)}"
         )
 
-        app.print(
-            "View at: ",
-            Text(deployment_url, style="link", justify="left"),
-            soft_wrap=True,
-            sep="",
-        )
-        app.print("")
-        app.print(f"Run: [cyan]{run_cmd}[/cyan]\nSchedule: [cyan]{schedule_cmd}[/cyan]")
+    if parameter_defaults:
+        param_msg = [f"{k}={v}" for k, v in parameter_defaults.items()]
+        env_section.append(f"[dim] » Parameters:[/] {', '.join(param_msg)}")
 
-        if work_pool.is_paused:
-            work_pool_url = f"{ui_url}/work-pools"
-            print()
-            app.print(
-                "[bold][orange1]Note:[/orange1][/bold] A deployment will not run while "
-                "its work pool is [bold]paused[/bold]. [bold]Resume[/bold] "
-                "the work pool at",
-                Text(work_pool_url, style="link", justify="left"),
-                soft_wrap=True,
-            )
+    content = Group(
+        *compute_section,
+        Text(""),
+        *source_section,
+        Text(""),
+        *env_section,
+    )
 
-        return deployment_id
+    panel = Panel(
+        content,
+        title=f"[bold][green] ✓ {deployment_name} created [/][/]",
+        padding=(0, 2),
+        expand=False,
+        width=65,
+    )
+
+    app.print(Align.left(panel))
+
+    deployment_url = f"{ui_url}/deployments/deployment/{deployment_id}"
+    app.print(
+        "View at: ",
+        Text(deployment_url, style="link", justify="left"),
+        soft_wrap=True,
+        sep="",
+    )
+
+    return deployment_id
 
 
 @app.command(rich_help_panel="Deploy")
