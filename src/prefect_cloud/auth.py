@@ -427,12 +427,15 @@ def set_cloud_profile(api_key: str, workspace: Workspace) -> None:
     if profile_name not in profiles["profiles"]:
         profiles["profiles"][profile_name] = {}
 
-    profiles["profiles"][profile_name].update(
-        {
-            "PREFECT_API_KEY": api_key,
-            "PREFECT_API_URL": workspace.api_url,
-        }
-    )
+    profile = {
+        "PREFECT_API_URL": workspace.api_url,
+        "PREFECT_API_KEY": api_key,
+    }
+    if os.environ.get("CLOUD_ENV") not in ("prd", "prod", None):
+        profile["PREFECT_CLOUD_UI_URL"] = CLOUD_UI_URL
+        profile["PREFECT_CLOUD_API_URL"] = CLOUD_API_URL
+
+    profiles["profiles"][profile_name].update(profile)
 
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(toml.dumps(profiles))

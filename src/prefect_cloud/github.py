@@ -35,19 +35,26 @@ class GitHubRepo:
         return f"https://github.com/{self.owner}/{self.repo}.git"
 
     def __str__(self) -> str:
-        return f"github.com/{self.owner}/{self.repo} @ {self.ref}"
+        return f"{self.owner}/{self.repo} @ {self.ref}"
+
+    @property
+    def full_name(self) -> str:
+        """Get the full name of the repository (owner/repo)."""
+        return f"{self.owner}/{self.repo}"
 
     @classmethod
     def from_url(cls, url: str) -> "GitHubRepo":
-        """Parse a GitHub repo URL into its components.
+        """Parse a GitHub repo URL or owner/repo string into its components.
 
         Handles various URL formats:
         - https://github.com/owner/repo
         - github.com/owner/repo/tree/branch
         - github.com/owner/repo/tree/a1b2c3d
+        - owner/repo
+        - owner/repo/tree/branch
 
         Args:
-            url: GitHub URL to parse
+            url: GitHub URL or owner/repo string to parse
 
         Returns:
             GitHubRepo
@@ -55,7 +62,26 @@ class GitHubRepo:
         Raises:
             ValueError: If URL format is invalid
         """
-        normalized_url = url if "://" in url else f"https://{url}"
+        # Special case for simple owner/repo format
+        if "/" in url and not any(
+            x in url for x in ["://", "github.com", "tree", "blob", "raw"]
+        ):
+            parts = url.split("/")
+            if len(parts) == 2:
+                owner, repo = parts
+                return cls(owner=owner, repo=repo.removesuffix(".git"), ref="main")
+            elif len(parts) >= 4 and parts[2] == "tree":
+                owner, repo = parts[0:2]
+                ref = parts[3]
+                return cls(owner=owner, repo=repo.removesuffix(".git"), ref=ref)
+
+        # Handle URL formats as before
+        normalized_url = url
+        if "://" not in url:
+            if not url.startswith("github.com"):
+                normalized_url = f"https://github.com/{url}"
+            else:
+                normalized_url = f"https://{url}"
 
         # Check for GitHub file URLs (blob/raw paths)
         if "/blob/" in normalized_url or "/raw/" in normalized_url:
@@ -247,7 +273,7 @@ def get_local_repo_urls() -> list[str]:
 
 
 def _get_prefect_cloud_github_app() -> str:
-    """Get the Github app name based on environment"""
+    """Get the GitHub app name based on environment"""
 
     env = os.environ.get("CLOUD_ENV")
 

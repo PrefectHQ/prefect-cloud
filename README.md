@@ -45,7 +45,7 @@ prefect-cloud deploy <path/to/file.py:function_name> --from <source repo URL>
 ```
 e.g.
 ```bash
-prefect-cloud deploy examples/hello.py:hello_world --from https://github.com/PrefectHQ/prefect-cloud/
+prefect-cloud deploy examples/hello.py:hello_world --from PrefectHQ/prefect-cloud
 ```
 
 ### Run it with
@@ -83,10 +83,15 @@ prefect-cloud deploy ... --with-requirements </path/to/requirements.txt>
 prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
 ```
 
+** Include Secrets as Environment Variables**
+```bash
+prefect-cloud deploy ... --secret KEY=VALUE --secret KEY2=VALUE2
+````
+
 **From a Private Repository**
 
 *(Recommended!)*
-Install the Prefect Cloud Github App into the repository you want to deploy from. 
+Install the Prefect Cloud GitHub App into the repository you want to deploy from. 
 This will allow you to deploy from private repositories without needing to provide a personal access token.
 ```bash
 prefect-cloud github setup
