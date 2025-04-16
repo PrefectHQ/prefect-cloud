@@ -83,7 +83,7 @@ prefect-cloud deploy ... --with-requirements </path/to/requirements.txt>
 prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
 ```
 
-** Include Secrets as Environment Variables**
+**Include Secrets as Environment Variables**
 ```bash
 prefect-cloud deploy ... --secret KEY=VALUE --secret KEY2=VALUE2
 ````
