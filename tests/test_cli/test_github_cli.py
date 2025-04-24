@@ -60,7 +60,7 @@ def test_github_setup_no_repositories(mock_outgoing_calls):
             "This may mean:",
             "• The integration was not successful, or",
             "• The integration is still pending GitHub admin approval",
-            "Once approved, you’ll be able to deploy from your GitHub repos using:",
+            "Once approved, you'll be able to deploy from your GitHub repos using:",
             "prefect-cloud deploy <file.py:function> --from <github repo>",
         ],
     )
@@ -119,3 +119,53 @@ def test_github_ls_exception_handling(mock_outgoing_calls):
         expected_code=1,
         expected_output_contains="Connection error",
     )
+
+
+def test_github_token_success(mock_outgoing_calls):
+    """Test the GitHub token command successfully retrieves a token."""
+    _, client_mock = mock_outgoing_calls
+    expected_token = "ghp_test_token"
+    client_mock.get_github_token.return_value = expected_token
+
+    invoke_and_assert(
+        command=["github", "token", "test-owner/test-repo"],
+        expected_code=0,
+        expected_output_contains=expected_token,
+    )
+
+    client_mock.get_github_token.assert_called_once_with(
+        owner="test-owner", repository="test-repo"
+    )
+
+
+def test_github_token_not_found(mock_outgoing_calls):
+    """Test the GitHub token command when no token is found."""
+    _, client_mock = mock_outgoing_calls
+    client_mock.get_github_token.return_value = None
+
+    invoke_and_assert(
+        command=["github", "token", "test-owner/test-repo"],
+        expected_code=1,
+        expected_output_contains=[
+            "Could not retrieve token for repository test-owner/test-repo.",
+            "Ensure the Prefect Cloud GitHub integration is setup and has access to this",
+            "repository.",
+        ],
+    )
+
+    client_mock.get_github_token.assert_called_once_with(
+        owner="test-owner", repository="test-repo"
+    )
+
+
+def test_github_token_invalid_repo_format(mock_outgoing_calls):
+    """Test the GitHub token command with an invalid repository format."""
+    _, client_mock = mock_outgoing_calls
+
+    invoke_and_assert(
+        command=["github", "token", "invalid-repo-format"],
+        expected_code=1,
+        expected_output_contains="Invalid repository format. Expected owner/repo.",
+    )
+
+    client_mock.get_github_token.assert_not_called()

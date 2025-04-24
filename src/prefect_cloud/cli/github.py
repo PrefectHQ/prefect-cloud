@@ -1,3 +1,7 @@
+from typing import Annotated
+
+import typer
+
 from prefect_cloud.auth import get_prefect_cloud_client
 from prefect_cloud.cli.deployments import app
 from prefect_cloud.cli.utilities import (
@@ -35,7 +39,7 @@ async def setup():
                     "This may mean:\n"
                     "• The integration was not successful, or\n"
                     "• The integration is still pending GitHub admin approval\n\n"
-                    "Once approved, you’ll be able to deploy from your GitHub repos using:\n"
+                    "Once approved, you'll be able to deploy from your GitHub repos using:\n"
                     "prefect-cloud deploy <file.py:function> --from <github repo>"
                 )
 
@@ -67,3 +71,32 @@ async def ls():
             f"Deploy a function from your repo with:\n"
             f"prefect-cloud deploy <file.py:function> --from <github repo>"
         )
+
+
+@github_app.command()
+async def token(
+    repository: Annotated[
+        str,
+        typer.Argument(
+            help="GitHub repository reference in owner/repo format.",
+            show_default=False,
+        ),
+    ],
+):
+    """
+    Retrieves and prints a short-lived GitHub token via the Prefect Cloud GitHub integration.
+    """
+    try:
+        owner, repo_name = repository.split("/")
+    except ValueError:
+        app.exit_with_error("Invalid repository format. Expected owner/repo.")
+
+    async with await get_prefect_cloud_client() as client:
+        github_token = await client.get_github_token(owner=owner, repository=repo_name)
+        if github_token:
+            app.console.print(github_token)
+        else:
+            app.exit_with_error(
+                f"Could not retrieve token for repository {repository}.\n"
+                "Ensure the Prefect Cloud GitHub integration is setup and has access to this repository."
+            )
