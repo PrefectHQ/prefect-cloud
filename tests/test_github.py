@@ -270,24 +270,6 @@ class TestGitHubContent:
             == clone_step["repository"]
         )
 
-    def test_get_token_command(self):
-        """Test generation of the shell command to retrieve GitHub token."""
-        github_ref = GitHubRepo(
-            owner="ExampleOwner",
-            repo="example-repo",
-            ref="main",
-        )
-
-        command = github_ref.get_token_command()
-
-        # Check that it contains necessary components
-        assert 'owner=\\"ExampleOwner\\"' in command
-        assert 'repository=\\"example-repo\\"' in command
-        assert "prefect_api_url" in command
-        assert "prefect_api_key" in command
-        assert "urllib.request.Request" in command
-        assert "/integrations/github/token" in command
-
 
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:

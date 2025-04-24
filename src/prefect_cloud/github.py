@@ -168,7 +168,7 @@ class GitHubRepo:
             {
                 "prefect.deployments.steps.run_shell_script": {
                     "id": "get-github-token",
-                    "script": self.get_token_command(),
+                    "script": f"uv tool run prefect-cloud github token {self.owner}/{self.repo}",
                 }
             },
             # Clone Step
@@ -180,22 +180,6 @@ class GitHubRepo:
                 }
             },
         ]
-
-    def get_token_command(self) -> str:
-        return (
-            r'python -c "import os, urllib.request, urllib.parse, json; '
-            f'owner=\\"{self.owner}\\"; '
-            f'repository=\\"{self.repo}\\"; '
-            r"prefect_api_url=os.environ.get(\"PREFECT_API_URL\", \"\"); "
-            r"base_url=prefect_api_url.split(\"/workspaces/\")[0] if prefect_api_url and \"/workspaces/\" in prefect_api_url else prefect_api_url; "
-            r"prefect_api_key=os.environ.get(\"PREFECT_API_KEY\", \"\"); "
-            r"req=urllib.request.Request("
-            r"f\"{base_url}/integrations/github/token\", "
-            r"data=json.dumps({\"owner\": owner, \"repository\": repository}).encode(), "
-            r"headers={\"Authorization\": f\"Bearer {prefect_api_key}\", \"Content-Type\": \"application/json\"}, "
-            r"method=\"POST\"); "
-            r'print(json.loads(urllib.request.urlopen(req).read())[\"token\"])"'
-        )
 
 
 def translate_to_http(url: str) -> str:
