@@ -35,7 +35,12 @@ class GitHubRepo:
         return f"https://github.com/{self.owner}/{self.repo}.git"
 
     def __str__(self) -> str:
-        return f"github.com/{self.owner}/{self.repo} @ {self.ref}"
+        return f"{self.owner}/{self.repo} @ {self.ref}"
+
+    @property
+    def full_name(self) -> str:
+        """Get the full name of the repository (owner/repo)."""
+        return f"{self.owner}/{self.repo}"
 
     @classmethod
     def from_url(cls, url: str) -> "GitHubRepo":
