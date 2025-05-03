@@ -72,3 +72,41 @@ def test_process_key_value_pairs_json():
     # Test empty values with as_json
     assert process_key_value_pairs([], as_json=True) == {}
     assert process_key_value_pairs(None, as_json=True) == {}
+
+
+def test_process_key_value_pairs_strips_whitespace_and_quotes():
+    """Test that surrounding whitespace and quotes are stripped from values."""
+    input_pairs = [
+        "key1=  value1  ",  # Whitespace only
+        'key2="value2"',  # Double quotes
+        "key3='value3'",  # Single quotes
+        'key4=  "value4"  ',  # Whitespace and double quotes
+        "key5=  'value5'  ",  # Whitespace and single quotes
+        "key6={block-slug}",  # Braces (should not be stripped)
+        'key7="{quoted-block}"',  # Braces within quotes
+        'key8=  "  value8  "  ',  # Internal whitespace should remain
+    ]
+    expected = {
+        "key1": "value1",
+        "key2": "value2",
+        "key3": "value3",
+        "key4": "value4",
+        "key5": "value5",
+        "key6": "{block-slug}",
+        "key7": "{quoted-block}",
+        "key8": "  value8  ",  # Internal whitespace remains
+    }
+    assert process_key_value_pairs(input_pairs) == expected
+
+    # Test with as_json=True as well, ensuring stripping happens before JSON parsing attempt
+    input_pairs_json = [
+        'num= "42" ',  # Quoted number
+        'bool=  "true" ',  # Quoted boolean
+        'str="string"',  # Single-quoted string containing double quotes (value becomes "string")
+    ]
+    expected_json = {
+        "num": 42,
+        "bool": True,
+        "str": "string",  # JSON parser handles internal quotes
+    }
+    assert process_key_value_pairs(input_pairs_json, as_json=True) == expected_json

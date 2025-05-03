@@ -84,9 +84,14 @@ prefect-cloud deploy ... --env KEY=VALUE --env KEY2=VALUE2
 ```
 
 **Include Secrets as Environment Variables**
+
 ```bash
-prefect-cloud deploy ... --secret KEY=VALUE --secret KEY2=VALUE2
-````
+# Create or replace secrets with actual values
+prefect-cloud deploy ... --secret API_KEY=actual-secret-value --secret DB_PASSWORD=another-secret-value
+
+# Reference existing secret blocks
+prefect-cloud deploy ... --secret API_KEY="{existing-api-key-block}" --secret DB_PASSWORD="{my-database-password}"
+```
 
 **From a Private Repository**
 

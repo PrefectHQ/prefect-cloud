@@ -53,7 +53,7 @@ def process_key_value_pairs(
             continue
 
         key = key.strip()
-        value = value.strip()
+        value = value.strip().strip("\"'")
 
         if as_json:
             try:
