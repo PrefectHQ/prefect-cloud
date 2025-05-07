@@ -242,9 +242,7 @@ def login_interactively() -> str | None:
     """Logs the user into Prefect Cloud interactively"""
 
     with login_server() as callback_ctx:
-        login_url = (
-            f"{CLOUD_UI_URL}/auth/client?callback={quote(callback_ctx.url)}&g=true"
-        )
+        login_url = f"{CLOUD_UI_URL}/auth/client?callback={quote(callback_ctx.url)}&source=prefect-cloud&g=true"
 
         threading.Thread(
             target=webbrowser.open_new_tab, args=(login_url,), daemon=True
