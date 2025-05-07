@@ -243,7 +243,7 @@ def login_interactively() -> str | None:
 
     with login_server() as callback_ctx:
         login_url = (
-            f"{CLOUD_UI_URL}/auth/client?callback={quote(callback_ctx.url)}&g=true"
+            f"{CLOUD_UI_URL}/auth/client?callback={quote(callback_ctx.url)}&source=prefect-cloud&g=true"
         )
 
         threading.Thread(
