@@ -109,6 +109,8 @@ async def deploy(
             "--secret",
             "-s",
             help="Secrets in <KEY=VALUE> format (can be used multiple times). "
+            "For VALUE: use actual value to create/replace a secret, or reference an existing secret block. "
+            'For example: MY_SECRET="{existing-secret-block-slug}". '
             "Will be injected into runtime as environment variables.",
             rich_help_panel="Environment",
             show_default=False,
@@ -229,10 +231,14 @@ async def deploy(
             # Handle secrets
             secret_env = {}
             for key, value in secrets.items():
-                secret_name = await client.create_or_replace_secret(
-                    name=key, secret=value
-                )
-                secret_env[key] = "{{ prefect.blocks.secret." + secret_name + " }}"
+                if value.startswith("{") and value.endswith("}"):
+                    secret_name = value[1:-1].strip()
+                    secret_env[key] = "{{ prefect.blocks.secret." + secret_name + " }}"
+                else:
+                    secret_name = await client.create_or_replace_secret(
+                        name=key, secret=value
+                    )
+                    secret_env[key] = "{{ prefect.blocks.secret." + secret_name + " }}"
 
             # Provision infrastructure
             progress.update(task, description="Provisioning infrastructure...")
