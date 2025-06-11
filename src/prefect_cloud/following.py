@@ -2,7 +2,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from types import TracebackType
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, cast
 from uuid import UUID
 
 from cachetools import TTLCache
@@ -236,7 +236,7 @@ class Event(BaseModel):
         description="The primary Resource this event concerns",
     )
     related: list[RelatedResource] = Field(
-        default_factory=list,
+        default_factory=lambda: cast(list[RelatedResource], []),
         description="A list of additional Resources involved in this event",
     )
     payload: dict[str, Any] = Field(
