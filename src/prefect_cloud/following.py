@@ -611,30 +611,42 @@ class FlowRunFormatter:
         run_id_display = self.format_run_id(run_id_short)
 
         state_colors = {
+            # FLOW RUN STATES
             # SCHEDULED
             "prefect.flow-run.Scheduled": "yellow",
             "prefect.flow-run.Late": "yellow",
             "prefect.flow-run.Resuming": "yellow",
             "prefect.flow-run.AwaitingRetry": "yellow",
             "prefect.flow-run.AwaitingConcurrencySlot": "yellow",
+            "prefect.task-run.Scheduled": "yellow",
+            "prefect.task-run.AwaitingRetry": "yellow",
             # PENDING
             "prefect.flow-run.Pending": "bright_black",
             "prefect.flow-run.Paused": "bright_black",
             "prefect.flow-run.Suspended": "bright_black",
+            "prefect.task-run.Pending": "bright_black",
             # RUNNING
             "prefect.flow-run.Running": "blue",
             "prefect.flow-run.Retrying": "blue",
+            "prefect.task-run.Running": "blue",
+            "prefect.task-run.Retrying": "blue",
             # COMPLETED
             "prefect.flow-run.Completed": "green",
             "prefect.flow-run.Cached": "green",
+            "prefect.task-run.Completed": "green",
+            "prefect.task-run.Cached": "green",
             # CANCELLED
             "prefect.flow-run.Cancelled": "bright_black",
             "prefect.flow-run.Cancelling": "bright_black",
+            "prefect.task-run.Cancelled": "bright_black",
+            "prefect.task-run.Cancelling": "bright_black",
             # CRASHED
-            "prefect.flow-run.Crashed": "bright_red",
+            "prefect.flow-run.Crashed": "orange1",
             # FAILED
             "prefect.flow-run.Failed": "red",
             "prefect.flow-run.TimedOut": "red",
+            "prefect.task-run.Failed": "red",
+            "prefect.task-run.TimedOut": "red",
         }
 
         color = state_colors.get(event.event, "bright_magenta")
