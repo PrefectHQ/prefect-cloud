@@ -1,24 +1,22 @@
-from uuid import UUID
 from typing import Annotated, Any
+from uuid import UUID
 
 import typer
 import tzlocal
 from rich.table import Table
 from rich.text import Text
 
-from prefect_cloud import auth, deployments
-from prefect_cloud.py_versions import PythonVersion
+from prefect_cloud import auth, deployments, following
 from prefect_cloud.cli import completions
 from prefect_cloud.cli.root import app
-from prefect_cloud.cli.utilities import (
-    process_key_value_pairs,
-)
+from prefect_cloud.cli.utilities import process_key_value_pairs
 from prefect_cloud.dependencies import get_dependencies
 from prefect_cloud.github import (
     FileNotFound,
     GitHubRepo,
     infer_repo_url,
 )
+from prefect_cloud.py_versions import PythonVersion
 from prefect_cloud.schemas.objects import (
     CronSchedule,
     DeploymentSchedule,
@@ -347,6 +345,14 @@ async def run(
             help="Suppress output",
         ),
     ] = False,
+    follow: Annotated[
+        bool,
+        typer.Option(
+            "--follow",
+            "-f",
+            help="Follow the logs of the flow run",
+        ),
+    ] = False,
 ):
     """
     Run a deployment immediately
@@ -358,7 +364,7 @@ async def run(
 
     parameters = parameters or []
 
-    ui_url, _, _ = await auth.get_cloud_urls_or_login()
+    ui_url, api_url, api_key = await auth.get_cloud_urls_or_login()
     func_kwargs = process_key_value_pairs(parameters, as_json=True)
 
     flow_run = await deployments.run(deployment, func_kwargs)
@@ -385,6 +391,14 @@ async def run(
             "to resume the work pool.",
             soft_wrap=True,
         )
+
+    if not follow:
+        return
+
+    formatter = following.FlowRunFormatter()
+    async with following.FlowRunSubscriber(api_url, api_key, flow_run.id) as subscriber:
+        async for item in subscriber:
+            app.print(formatter.format(item))
 
 
 @app.command(rich_help_panel="Deploy")

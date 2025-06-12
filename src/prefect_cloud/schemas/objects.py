@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import re
-from typing import Any, Optional, TypeAlias, Union
+from typing import Any, Optional, TypeAlias, Union, cast
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -100,6 +100,9 @@ class Flow(BaseModel):
     )
 
 
+SCHEDULE_TYPES: TypeAlias = Union["IntervalSchedule", "CronSchedule", "RRuleSchedule"]
+
+
 class DeploymentSchedule(BaseModel):
     id: UUID = Field(
         default=...,
@@ -125,7 +128,8 @@ class Deployment(BaseModel):
     name: str = Field(default=..., description="The name of the deployment.")
     flow_id: UUID = Field(default=..., description="The ID of the flow.")
     schedules: list[DeploymentSchedule] = Field(
-        default_factory=list, description="A list of schedules for the deployment."
+        default_factory=lambda: cast(list[DeploymentSchedule], []),
+        description="A list of schedules for the deployment.",
     )
 
 
@@ -176,4 +180,4 @@ class RRuleSchedule(BaseModel):
     rrule: str
 
 
-SCHEDULE_TYPES: TypeAlias = Union[IntervalSchedule, CronSchedule, RRuleSchedule]
+DeploymentSchedule.model_rebuild()
