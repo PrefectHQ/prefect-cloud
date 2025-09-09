@@ -168,7 +168,7 @@ class GitHubRepo:
             {
                 "prefect.deployments.steps.run_shell_script": {
                     "id": "get-github-token",
-                    "script": f"uv tool run prefect-cloud github token {self.owner}/{self.repo}",
+                    "script": f"uvx prefect-cloud github token {self.owner}/{self.repo}",
                 }
             },
             # Clone Step
