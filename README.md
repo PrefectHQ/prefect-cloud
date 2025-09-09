@@ -22,6 +22,27 @@ uv pip install prefect-cloud
 
 Alternatively, you can run `prefect-cloud` as a tool without installing it using `uvx`. See [uv tools guide](https://docs.astral.sh/uv/guides/tools/) for more details.
 
+## Quick Start with uvx (no installation required)
+
+If you prefer to run without installing, you can use `uvx` to run `prefect-cloud` commands directly:
+
+```bash
+# Login to Prefect Cloud
+uvx prefect-cloud login
+
+# Connect to GitHub (for private repos)
+uvx prefect-cloud github setup
+
+# Deploy your workflow
+uvx prefect-cloud deploy examples/hello.py:hello_world --from PrefectHQ/prefect-cloud
+
+# Run it
+uvx prefect-cloud run hello_world/hello_world
+
+# Schedule it
+uvx prefect-cloud schedule hello_world/hello_world "0 * * * *"
+```
+
 ## Login to Prefect Cloud
 
 ```bash
