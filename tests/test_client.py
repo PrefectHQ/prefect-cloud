@@ -332,3 +332,183 @@ async def test_get_github_repositories_error(
     result = await client.get_github_repositories()
 
     assert result == []
+
+
+# Retry functionality tests
+
+
+async def test_request_retry_on_read_timeout(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that requests are retried on ReadTimeout errors."""
+    import httpx
+    import time
+
+    # First two requests timeout, third succeeds
+    respx_mock.get(f"{PREFECT_API_URL}/test").mock(
+        side_effect=[
+            httpx.ReadTimeout("Request timeout"),
+            httpx.ReadTimeout("Request timeout"),
+            Response(200, json={"success": True}),
+        ]
+    )
+
+    start_time = time.time()
+    response = await client.request("GET", "/test")
+    elapsed_time = time.time() - start_time
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True}
+    assert len(respx_mock.calls) == 3
+    # Should have delays (approximately 1s + 2s = 3s minimum with jitter)
+    assert elapsed_time >= 2.5
+
+
+async def test_request_retry_on_connect_timeout(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that requests are retried on ConnectTimeout errors."""
+    import httpx
+
+    # First request times out, second succeeds
+    respx_mock.get(f"{PREFECT_API_URL}/test").mock(
+        side_effect=[
+            httpx.ConnectTimeout("Connection timeout"),
+            Response(200, json={"success": True}),
+        ]
+    )
+
+    response = await client.request("GET", "/test")
+
+    assert response.status_code == 200
+    assert len(respx_mock.calls) == 2
+
+
+async def test_request_retry_on_network_error(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that requests are retried on NetworkError."""
+    import httpx
+
+    # First request has network error, second succeeds
+    respx_mock.get(f"{PREFECT_API_URL}/test").mock(
+        side_effect=[
+            httpx.NetworkError("Network unreachable"),
+            Response(200, json={"success": True}),
+        ]
+    )
+
+    response = await client.request("GET", "/test")
+
+    assert response.status_code == 200
+    assert len(respx_mock.calls) == 2
+
+
+async def test_request_retry_on_server_error(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that requests are retried on 5xx server errors."""
+    # First request returns 500, second succeeds
+    respx_mock.get(f"{PREFECT_API_URL}/test").mock(
+        side_effect=[
+            Response(500, json={"error": "Internal server error"}),
+            Response(200, json={"success": True}),
+        ]
+    )
+
+    response = await client.request("GET", "/test")
+
+    assert response.status_code == 200
+    assert len(respx_mock.calls) == 2
+
+
+async def test_request_retry_on_rate_limit(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that requests are retried on 429 rate limit errors."""
+    # First request returns 429, second succeeds
+    respx_mock.get(f"{PREFECT_API_URL}/test").mock(
+        side_effect=[
+            Response(429, json={"error": "Rate limit exceeded"}),
+            Response(200, json={"success": True}),
+        ]
+    )
+
+    response = await client.request("GET", "/test")
+
+    assert response.status_code == 200
+    assert len(respx_mock.calls) == 2
+
+
+async def test_request_no_retry_on_client_error(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that requests are NOT retried on 4xx client errors (except 429)."""
+    respx_mock.get(f"{PREFECT_API_URL}/test").mock(
+        return_value=Response(404, json={"error": "Not found"})
+    )
+
+    response = await client.request("GET", "/test")
+
+    assert response.status_code == 404
+    assert len(respx_mock.calls) == 1  # No retry
+
+
+async def test_request_max_retries_exceeded(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that requests fail after maximum retries are exceeded."""
+    import httpx
+
+    # All requests timeout
+    respx_mock.get(f"{PREFECT_API_URL}/test").mock(
+        side_effect=httpx.ReadTimeout("Request timeout")
+    )
+
+    with pytest.raises(httpx.ReadTimeout):
+        await client.request("GET", "/test")
+
+    # Should have made 4 attempts (initial + 3 retries)
+    assert len(respx_mock.calls) == 4
+
+
+async def test_request_github_token_with_retry(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that get_github_token works with retry logic."""
+    import httpx
+
+    test_token = "github_access_token"
+    test_repo = "test-repo"
+    test_owner = "test-owner"
+
+    # First request times out, second succeeds
+    respx_mock.post(f"{PREFECT_ACCOUNT_URL}/integrations/github/token").mock(
+        side_effect=[
+            httpx.ReadTimeout("Request timeout"),
+            Response(200, json={"token": test_token}),
+        ]
+    )
+
+    result = await client.get_github_token(repository=test_repo, owner=test_owner)
+
+    assert result == test_token
+    assert len(respx_mock.calls) == 2
+
+
+async def test_request_github_token_returns_none_on_404(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """Test that get_github_token still returns None on 404 (handled by method logic)."""
+    test_repo = "test-repo"
+    test_owner = "test-owner"
+
+    # Return 404 (should not be retried)
+    respx_mock.post(f"{PREFECT_ACCOUNT_URL}/integrations/github/token").mock(
+        return_value=Response(404, json={"error": "Not found"})
+    )
+
+    result = await client.get_github_token(repository=test_repo, owner=test_owner)
+
+    assert result is None
+    assert len(respx_mock.calls) == 1  # No retry
