@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import random
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
 from uuid import UUID
@@ -37,12 +39,81 @@ HTTP_METHODS: TypeAlias = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
 PREFECT_API_REQUEST_TIMEOUT = 60.0
 
 
+async def _retry_request(
+    request_func: Any,
+    *args: Any,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    **kwargs: Any,
+) -> httpx.Response:
+    """
+    Execute an async request function with exponential backoff retry logic.
+
+    Retries on:
+    - ReadTimeout, ConnectTimeout, NetworkError (transient network issues)
+    - 5xx server errors
+    - 429 rate limit errors
+
+    Does not retry on:
+    - 4xx client errors (except 429)
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            response = await request_func(*args, **kwargs)
+
+            # Check if response has retryable status code
+            if response.status_code >= 500 or response.status_code == 429:
+                if attempt < max_retries:
+                    # Wait with exponential backoff before retry
+                    delay = base_delay * (2**attempt)
+                    jitter = random.uniform(0.1, 0.3) * delay
+                    await asyncio.sleep(delay + jitter)
+                    continue
+                # On last attempt with retryable status, return the response
+                # Let the caller decide how to handle the error status
+                return response
+
+            return response
+
+        except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.NetworkError) as exc:
+            if attempt < max_retries:
+                # Wait with exponential backoff before retry
+                delay = base_delay * (2**attempt)
+                jitter = random.uniform(0.1, 0.3) * delay
+                await asyncio.sleep(delay + jitter)
+                continue
+            # On last attempt, re-raise the exception
+            raise exc
+        except Exception as exc:
+            # Don't retry other exceptions (e.g., HTTPStatusError for 4xx)
+            raise exc
+
+    # This should never be reached with valid parameters, but satisfy type checker
+    raise RuntimeError(
+        f"Retry loop completed unexpectedly with max_retries={max_retries}"
+    )
+
+
 class PrefectCloudClient(httpx.AsyncClient):
     def __init__(self, api_url: str, api_key: str):
         httpx_settings: dict[str, Any] = {}
         httpx_settings.setdefault("headers", {"Authorization": f"Bearer {api_key}"})
         httpx_settings.setdefault("base_url", api_url)
         super().__init__(**httpx_settings)
+
+    async def request(
+        self,
+        method: str | HTTP_METHODS,
+        url: httpx.URL | str,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """
+        Make an HTTP request with retry logic for transient errors.
+
+        This method wraps the parent request method with exponential backoff
+        retry logic to handle network timeouts and server errors.
+        """
+        return await _retry_request(super().request, method, url, **kwargs)
 
     @property
     def account_url(self) -> str:
