@@ -168,6 +168,8 @@ class GitHubRepo:
             {
                 "prefect.deployments.steps.run_shell_script": {
                     "id": "get-github-token",
+                    # The prefect image currently doesn't get built with uvx
+                    # installed. So we use the long name instead of the alias.
                     "script": f"uv tool run prefect-cloud github token {self.owner}/{self.repo}",
                 }
             },
