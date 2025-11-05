@@ -27,7 +27,11 @@ from prefect_cloud.schemas.responses import DeploymentResponse
 from prefect_cloud.settings import settings
 from prefect_cloud.utilities.blocks import safe_block_name
 from prefect_cloud.utilities.callables import ParameterSchema
-from prefect_cloud.utilities.exception import ObjectAlreadyExists, ObjectNotFound
+from prefect_cloud.utilities.exception import (
+    ForbiddenError,
+    ObjectAlreadyExists,
+    ObjectNotFound,
+)
 from prefect_cloud.utilities.generics import validate_list
 
 if TYPE_CHECKING:
@@ -338,16 +342,21 @@ class PrefectCloudClient(httpx.AsyncClient):
         )
 
         json = deployment_create.model_dump(mode="json")
-        response = await self.request(
-            "POST",
-            "/deployments/",
-            json=json,
-        )
-        deployment_id = response.json().get("id")
-        if not deployment_id:
-            raise RequestError(f"Malformed response: {response}")
-
-        return UUID(deployment_id)
+        try:
+            response = await self.request(
+                "POST",
+                "/deployments/",
+                json=json,
+            )
+            response.raise_for_status()
+            deployment_id = response.json().get("id")
+            if not deployment_id:
+                raise RequestError(f"Malformed response: {response}")
+            return UUID(deployment_id)
+        except HTTPStatusError as e:
+            if e.response.status_code == 403:
+                raise ForbiddenError(http_exc=e) from e
+            raise
 
     async def delete_deployment(self, deployment_id: "UUID"):
         try:
