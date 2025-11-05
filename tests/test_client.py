@@ -15,6 +15,7 @@ from prefect_cloud.schemas.objects import (
     WorkPool,
 )
 from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.utilities.exception import ForbiddenError
 
 PREFECT_API_KEY = "test_key"
 PREFECT_API_URL = "https://api.prefect.cloud/api/accounts/123/workspaces/456"
@@ -126,6 +127,83 @@ async def test_create_deployment(
     )
 
     assert result == mock_deployment.id
+
+
+async def test_create_deployment_forbidden_with_detail(
+    client: PrefectCloudClient,
+    mock_deployment: DeploymentResponse,
+    respx_mock: respx.Router,
+):
+    """Test that 403 with detail message raises ForbiddenError with detail."""
+    error_detail = (
+        "You have reached the maximum number of deployments for your workspace. "
+        "To upgrade please reach out to us by visiting "
+        "https://api.prefect.cloud/settings/account/123/tier-limits/upgrade "
+        "or contacting your account administrator. Current limit: 2 deployments."
+    )
+    respx_mock.post(f"{PREFECT_API_URL}/deployments/").mock(
+        return_value=Response(403, json={"detail": error_detail})
+    )
+
+    with pytest.raises(ForbiddenError) as exc_info:
+        await client.create_deployment(
+            flow_id=mock_deployment.flow_id,
+            name="test-deployment",
+            entrypoint="flow.py:test_flow",
+            work_pool_name="test-pool",
+            pull_steps=None,
+            parameter_openapi_schema=None,
+        )
+
+    assert str(exc_info.value) == error_detail
+    assert hasattr(exc_info.value, "http_exc")
+
+
+async def test_create_deployment_forbidden_without_detail(
+    client: PrefectCloudClient,
+    mock_deployment: DeploymentResponse,
+    respx_mock: respx.Router,
+):
+    """Test that 403 without detail field raises ForbiddenError with fallback message."""
+    respx_mock.post(f"{PREFECT_API_URL}/deployments/").mock(
+        return_value=Response(403, json={"error": "Forbidden"})
+    )
+
+    with pytest.raises(ForbiddenError) as exc_info:
+        await client.create_deployment(
+            flow_id=mock_deployment.flow_id,
+            name="test-deployment",
+            entrypoint="flow.py:test_flow",
+            work_pool_name="test-pool",
+            pull_steps=None,
+            parameter_openapi_schema=None,
+        )
+
+    assert "Access forbidden" in str(exc_info.value)
+
+
+async def test_create_deployment_forbidden_without_json(
+    client: PrefectCloudClient,
+    mock_deployment: DeploymentResponse,
+    respx_mock: respx.Router,
+):
+    """Test that 403 without JSON body raises ForbiddenError with fallback message."""
+    respx_mock.post(f"{PREFECT_API_URL}/deployments/").mock(
+        return_value=Response(403, text="Forbidden")
+    )
+
+    with pytest.raises(ForbiddenError) as exc_info:
+        await client.create_deployment(
+            flow_id=mock_deployment.flow_id,
+            name="test-deployment",
+            entrypoint="flow.py:test_flow",
+            work_pool_name="test-pool",
+            pull_steps=None,
+            parameter_openapi_schema=None,
+        )
+
+    assert "Access forbidden" in str(exc_info.value)
+    assert "Forbidden" in str(exc_info.value)
 
 
 async def test_upsert_block_document_creates_block(
