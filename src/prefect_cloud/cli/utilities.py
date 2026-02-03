@@ -127,9 +127,9 @@ class PrefectCloudTyper(typer.Typer):
                 return fn(*args, **kwargs)
             except (typer.Exit, typer.Abort, ClickException):
                 raise  # Do not capture click or typer exceptions
-            except Exception:
+            except Exception as e:
                 traceback.print_exc()
-                self.exit_with_error("An error occurred.")
+                self.exit_with_error(str(e) or "An error occurred.")
 
         return wrapper
 
@@ -157,7 +157,7 @@ class PrefectCloudTyper(typer.Typer):
             # entrypoint.
             func = inspect.unwrap(original_fn)
 
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(func):
                 async_fn = original_fn
 
                 @functools.wraps(original_fn)
