@@ -4,7 +4,7 @@ from prefect_cloud import __version__
 from prefect_cloud.cli.utilities import PrefectCloudTyper
 
 app = PrefectCloudTyper(
-    rich_markup_mode=True,
+    rich_markup_mode="rich",
     help="Deploy with Prefect Cloud",
     short_help="Deploy with Prefect Cloud",
 )
