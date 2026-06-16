@@ -62,7 +62,7 @@ class LogsSubscriber:
         self._api_url = api_url
         self._api_key = api_key
         self._filter = filter or {}
-        self._seen_logs = TTLCache(
+        self._seen_logs = TTLCache[UUID, bool](
             maxsize=10000, ttl=300
         )  # 5 minute TTL, 10k max items
 
@@ -275,7 +275,7 @@ class EventsSubscriber:
         self._api_url = api_url
         self._api_key = api_key
         self._filter = filter or {}
-        self._seen_events = TTLCache(
+        self._seen_events = TTLCache[UUID, bool](
             maxsize=10000, ttl=300
         )  # 5 minute TTL, 10k max items
 

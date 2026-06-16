@@ -438,7 +438,7 @@ requires-dist = [
     { name = "toml", specifier = ">=0.10.2" },
     { name = "typer", specifier = ">=0.16.0,<0.22.0" },
     { name = "typing-extensions", specifier = ">=4.12.2,<5.0.0" },
-    { name = "tzlocal", specifier = ">=5.2" },
+    { name = "tzlocal", specifier = ">=5.2,<5.4" },
     { name = "uv", specifier = ">=0.5.26" },
     { name = "websockets", specifier = ">=15.0.1,<17.0" },
 ]
