@@ -124,13 +124,14 @@ def test_github_ls_exception_handling(mock_outgoing_calls):
 def test_github_token_success(mock_outgoing_calls):
     """Test the GitHub token command successfully retrieves a token."""
     _, client_mock = mock_outgoing_calls
-    expected_token = "ghp_test_token"
+    expected_token = "ghs_" + "x" * 516
     client_mock.get_github_token.return_value = expected_token
 
     invoke_and_assert(
         command=["github", "token", "test-owner/test-repo"],
         expected_code=0,
-        expected_output_contains=expected_token,
+        expected_output=expected_token,
+        expected_line_count=1,
     )
 
     client_mock.get_github_token.assert_called_once_with(

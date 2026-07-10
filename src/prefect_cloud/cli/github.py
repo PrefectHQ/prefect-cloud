@@ -94,7 +94,7 @@ async def token(
     async with await get_prefect_cloud_client() as client:
         github_token = await client.get_github_token(owner=owner, repository=repo_name)
         if github_token:
-            app.console.print(github_token)
+            typer.echo(github_token)
         else:
             app.exit_with_error(
                 f"Could not retrieve token for repository {repository}.\n"
