@@ -14,7 +14,10 @@ from prefect_cloud.schemas.objects import (
     Flow,
     WorkPool,
 )
-from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.schemas.responses import (
+    DeploymentResponse,
+    GitHubStateTokenResponse,
+)
 from prefect_cloud.utilities.exception import ForbiddenError
 
 PREFECT_API_KEY = "test_key"
@@ -352,7 +355,9 @@ async def test_get_github_state_token(
 
     result = await client.get_github_state_token(redirect_url=test_redirect_url)
 
-    assert result == test_token
+    assert result == GitHubStateTokenResponse(
+        state_token=test_token, authorize_url=None
+    )
 
     # Check request was made with correct JSON data
     # The redirect_url is passed directly as the json parameter, which means
@@ -362,6 +367,27 @@ async def test_get_github_state_token(
 
     expected_content = json.dumps(test_redirect_url).encode()
     assert respx_mock.calls[0].request.content == expected_content
+
+
+async def test_get_github_state_token_returns_authorize_url(
+    client: PrefectCloudClient, respx_mock: respx.Router
+):
+    """get_github_state_token returns the authorize URL when the server sends one."""
+    authorize_url = "https://github.com/login/oauth/authorize?client_id=abc&state=tok"
+
+    respx_mock.post(f"{PREFECT_ACCOUNT_URL}/integrations/github/state-token").mock(
+        return_value=Response(
+            200, json={"state_token": "tok", "authorize_url": authorize_url}
+        )
+    )
+
+    result = await client.get_github_state_token(
+        redirect_url="https://example.com/callback"
+    )
+
+    assert result == GitHubStateTokenResponse(
+        state_token="tok", authorize_url=authorize_url
+    )
 
 
 async def test_get_github_token(client: PrefectCloudClient, respx_mock: respx.Router):
