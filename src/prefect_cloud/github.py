@@ -281,13 +281,16 @@ async def install_github_app_interactively(client: PrefectCloudClient) -> None:
 
         cloud_callback_url = f"{CLOUD_UI_URL}/account/{account_id}/integrations/success?callback={quote(callback_ctx.url)}&type=github"
 
-        state_token = await client.get_github_state_token(
+        github_state = await client.get_github_state_token(
             redirect_url=cloud_callback_url
         )
-        install_app_url = f"https://github.com/apps/{github_app_name}/installations/new?state={state_token}"
+        github_url = (
+            github_state.authorize_url
+            or f"https://github.com/apps/{github_app_name}/installations/new?state={github_state.state_token}"
+        )
 
         threading.Thread(
-            target=webbrowser.open_new_tab, args=(install_app_url,), daemon=True
+            target=webbrowser.open_new_tab, args=(github_url,), daemon=True
         ).start()
 
         callback_ctx.wait_for_callback()

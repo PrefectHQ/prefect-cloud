@@ -23,7 +23,10 @@ from prefect_cloud.schemas.objects import (
     Flow,
     WorkPool,
 )
-from prefect_cloud.schemas.responses import DeploymentResponse
+from prefect_cloud.schemas.responses import (
+    DeploymentResponse,
+    GitHubStateTokenResponse,
+)
 from prefect_cloud.settings import settings
 from prefect_cloud.utilities.blocks import safe_block_name
 from prefect_cloud.utilities.callables import ParameterSchema
@@ -149,18 +152,20 @@ class PrefectCloudClient(httpx.AsyncClient):
         url = f"{self.account_url}/{path.lstrip('/')}"
         return await self.request(method, url, **kwargs)
 
-    async def get_github_state_token(self, redirect_url: str | None = None) -> str:
+    async def get_github_state_token(
+        self, redirect_url: str | None = None
+    ) -> GitHubStateTokenResponse:
         """
         Get a state token for GitHub integration.
 
         Returns:
-            The state token
+            The state token, and GitHub's authorize URL when the server provides one
         """
         response = await self.account_request(
             "POST", "integrations/github/state-token", json=redirect_url
         )
         response.raise_for_status()
-        return response.json()["state_token"]
+        return GitHubStateTokenResponse.model_validate(response.json())
 
     async def get_github_token(
         self,
