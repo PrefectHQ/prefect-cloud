@@ -16,7 +16,7 @@ from pydantic import (
     PydanticUndefinedAnnotation,
 )
 from pydantic.json_schema import GenerateJsonSchema, JsonSchemaValue
-from pydantic_core import core_schema
+from pydantic_core import SchemaError, core_schema
 import pydantic
 from prefect_cloud.utilities.source_signature import signature_from_source
 from griffe import Docstring, DocstringSectionKind, Parser, parse
@@ -226,7 +226,7 @@ def generate_parameter_schema(
         # type supports schema generation
         try:
             create_schema("CheckParameter", model_fields={name: (type_, field)})
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, SchemaError):
             # This field's type is not valid for schema creation, update it to `Any`
             type_ = Any
         model_fields[name] = (type_, field)

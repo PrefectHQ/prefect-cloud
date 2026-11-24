@@ -1,3 +1,4 @@
+import builtins
 import zoneinfo
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -17,7 +18,8 @@ from prefect_cloud.schemas.responses import DeploymentResponse
 
 @dataclass
 class DeploymentListContext:
-    deployments: list[Deployment]
+    # This module defines its own `list`, which the annotation would otherwise name.
+    deployments: builtins.list[Deployment]
     flows_by_id: dict[UUID, Flow]
     next_runs_by_deployment_id: dict[UUID, DeploymentFlowRun]
 

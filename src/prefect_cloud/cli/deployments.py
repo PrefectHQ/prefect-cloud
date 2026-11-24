@@ -24,6 +24,7 @@ from prefect_cloud.schemas.objects import (
     RRuleSchedule,
 )
 from prefect_cloud.utilities.callables import get_parameter_schema_from_content
+from prefect_cloud.utilities.source_signature import UnparsableSource
 
 
 @app.command(rich_help_panel="Deploy")
@@ -221,6 +222,8 @@ async def deploy(
                 parameter_schema = get_parameter_schema_from_content(
                     raw_contents, function
                 )
+            except UnparsableSource as e:
+                app.exit_with_error(f"Could not parse {filepath}: {e}")
             except ValueError:
                 app.exit_with_error(
                     f"Could not find function '{function}' in {filepath}",
