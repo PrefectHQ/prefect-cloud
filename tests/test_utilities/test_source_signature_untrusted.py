@@ -7,6 +7,7 @@ the reader, and check that none of it gets through.
 import inspect
 from pathlib import Path
 
+import pydantic
 import pytest
 
 from prefect_cloud.utilities.callables import get_parameter_schema_from_content
@@ -191,6 +192,14 @@ def test_rebuilt_model_errors_are_unknown():
         "D0 = 1\n"
         + "".join(f"D{i} = [D{i - 1}]\n" for i in range(1, 3000))
         + "def f(x=D2999): pass",
+        "X0 = 'aaaaaaaaaa'\n"
+        + "".join(
+            f"X{i} = str([{', '.join([f'X{i - 1}'] * 900)}])\n" for i in (1, 2, 3)
+        )
+        + "def f(x=X3): pass",
+        "T0 = (1, 2)\n"
+        + "".join(f"T{i} = (T{i - 1}, T{i - 1})\n" for i in range(1, 40))
+        + "D = {T39: 1}\ndef f(x=D): pass",
         "A = 99999999\n"
         + "".join(
             f"A{i} = A{i - 1 if i else ''} * A{i - 1 if i else ''}\n" for i in range(40)
@@ -216,6 +225,9 @@ def test_huge_values_are_unknown(source_code: str):
         "from pydantic import RootModel\nA0 = int\n"
         + "".join(f"A{i} = tuple[A{i - 1}, A{i - 1}]\n" for i in range(1, 60))
         + "def f(x: RootModel[A59]): pass",
+        "from typing import Literal\nU0 = Literal[0]\n"
+        + "".join(f"U{i} = U{i - 1} | Literal[{i}]\n" for i in range(1, 5000))
+        + "def f(x: U4999): pass",
     ],
 )
 def test_unreadable_annotations_are_unknown(source_code: str):
@@ -234,3 +246,35 @@ def test_unreadable_annotations_are_unknown(source_code: str):
 def test_unparsable_source_raises(source_code: str):
     with pytest.raises(UnparsableSource):
         signature_from_source(source_code, "f")
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "Annotated[str, Field(pattern='(?=a)b')]",
+        "Annotated[int, Field(gt='a')]",
+    ],
+)
+def test_invalid_field_constraints_leave_the_parameter_untyped(annotation: str):
+    source_code = (
+        "from typing import Annotated\n"
+        "from pydantic import Field\n"
+        f"def f(x: {annotation}): pass\n"
+    )
+
+    schema = get_parameter_schema_from_content(source_code, "f")
+
+    assert "type" not in schema.properties["x"]
+
+
+def test_stops_rebuilding_models_after_too_many_fields():
+    source_code = (
+        "from pydantic import BaseModel\nclass M0(BaseModel):\n"
+        + "".join(f"    a{i}: int = 0\n" for i in range(500))
+        + "".join(f"class M{i}(M{i - 1}):\n    pass\n" for i in range(1, 500))
+        + "def f(x: M499): pass"
+    )
+
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert not issubclass(parameter.annotation, pydantic.BaseModel)

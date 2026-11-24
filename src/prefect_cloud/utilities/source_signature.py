@@ -100,6 +100,14 @@ MAX_DECIMAL_EXPONENT = 1000
 MAX_STRUCTURE_ITEMS = 1000
 MAX_STRUCTURE_DEPTH = 50
 
+# `str([X, X, ...])` multiplies a string's length with each line of source.
+MAX_STRING_LENGTH = 10_000
+
+# Each rebuilt model copies the fields of its base, so a chain of subclasses
+# costs the square of its length.  This bounds the total number of fields and
+# enum members rebuilt from one file.
+MAX_REBUILT_MEMBERS = 2000
+
 LITERALS: tuple[Any, ...] = (Literal, typing_extensions.Literal)
 ANNOTATED: tuple[Any, ...] = (Annotated, typing_extensions.Annotated)
 
@@ -119,6 +127,7 @@ class SourceNamespace:
         self.names: dict[str, Any] = {}
         # Classes rebuilt from this file; calling them only validates field values.
         self.rebuilt_classes: list[type] = []
+        self.rebuilt_members = 0
         for node in module.body:
             self._bind(node)
 
@@ -180,7 +189,7 @@ class SourceNamespace:
     def _rebuild_class(self, node: ast.ClassDef) -> type:
         bases = [base for base in map(self._try_evaluate, node.bases) if base]
         try:
-            if any(base in ENUM_BASES for base in bases):
+            if any(self._is_enum_base(base) for base in bases):
                 rebuilt = self._rebuild_enum(node, bases)
             elif model_base := self._model_base(bases):
                 rebuilt = self._rebuild_model(node, model_base)
@@ -192,10 +201,24 @@ class SourceNamespace:
         self.rebuilt_classes.append(rebuilt)
         return rebuilt
 
+    def _is_enum_base(self, base: Any) -> bool:
+        # An enum from this file can be a base only while it has no members,
+        # as a shared base with helper methods usually does.
+        return base in ENUM_BASES or (
+            base in self.rebuilt_classes and _is_enum_class(base) and not list(base)
+        )
+
+    def _count_rebuilt_members(self, count: int) -> None:
+        self.rebuilt_members += count
+        if self.rebuilt_members > MAX_REBUILT_MEMBERS:
+            raise UnknownExpression("too many fields and members in the file")
+
     def _rebuild_enum(self, node: ast.ClassDef, bases: list[Any]) -> type:
-        if not all(base in ENUM_BASES or base in ENUM_MIXINS for base in bases):
+        if not all(self._is_enum_base(base) or base in ENUM_MIXINS for base in bases):
             raise UnknownExpression("enum with a base outside the standard library")
-        enum_base: type[enum.Enum] = next(base for base in bases if base in ENUM_BASES)
+        enum_base: type[enum.Enum] = next(
+            base for base in bases if self._is_enum_base(base)
+        )
         mixin = next((base for base in bases if base in ENUM_MIXINS), None)
         members: list[tuple[str, Any]] = []
         for statement in node.body:
@@ -215,6 +238,7 @@ class SourceNamespace:
                 except UnknownExpression:
                     continue
                 members.append((statement.targets[0].id, value))
+        self._count_rebuilt_members(len(members))
         # Enum's functional API returns a new class, which type checkers read as
         # an instance of `enum_base`.
         return cast(type, enum_base(node.name, members, type=mixin))
@@ -252,6 +276,7 @@ class SourceNamespace:
                 else:
                     default = self.default(statement.value)
                 fields[statement.target.id] = (annotation, default)
+        self._count_rebuilt_members(len(model_base.model_fields) + len(fields))
         return pydantic.create_model(node.name, __base__=model_base, **fields)
 
     def annotation(self, node: Optional[ast.expr]) -> Any:
@@ -327,11 +352,11 @@ class SourceNamespace:
                 # Subscripting a type can resolve strings in the key as forward
                 # references right away, as pydantic's generic models do.
                 _check_subscript_key(container, key)
-            return self._apply(lambda: container[key])
+            return self._checked(self._apply(lambda: container[key]))
 
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
             left, right = self._evaluate(node.left), self._evaluate(node.right)
-            return self._apply(lambda: left | right)
+            return self._checked(self._apply(lambda: left | right))
 
         if isinstance(node, ast.BinOp) and type(node.op) in ARITHMETIC:
             left, right = self._evaluate(node.left), self._evaluate(node.right)
@@ -347,6 +372,9 @@ class SourceNamespace:
 
         if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
             items = [self._evaluate(element) for element in node.elts]
+            # Checked before building, because a set hashes its items, and
+            # hashing a tuple that repeats itself takes exponential time.
+            _check_structure(items, is_annotation=False)
             if isinstance(node, ast.Tuple):
                 return tuple(items)
             return items if isinstance(node, ast.List) else self._apply(set, items)
@@ -354,14 +382,13 @@ class SourceNamespace:
         if isinstance(node, ast.Dict):
             if any(key is None for key in node.keys):
                 raise UnknownExpression("dictionary unpacking")
-            return self._apply(
-                dict,
-                [
-                    (self._evaluate(key), self._evaluate(value))
-                    for key, value in zip(node.keys, node.values)
-                    if key is not None
-                ],
-            )
+            pairs = [
+                (self._evaluate(key), self._evaluate(value))
+                for key, value in zip(node.keys, node.values)
+                if key is not None
+            ]
+            _check_structure(pairs, is_annotation=False)
+            return self._apply(dict, pairs)
 
         if isinstance(node, ast.Call):
             function = self._evaluate(node.func)
@@ -394,8 +421,11 @@ class SourceNamespace:
                     name
                     for name, field in function.model_fields.items()
                     if field.is_required()
-                    and name not in kwargs
-                    and field.alias not in kwargs
+                    and not any(
+                        alias in kwargs
+                        for alias in (name, field.alias, field.validation_alias)
+                        if isinstance(alias, str)
+                    )
                 ]
                 if missing:
                     raise UnknownExpression(f"missing model fields {missing}")
@@ -403,6 +433,12 @@ class SourceNamespace:
             return _bounded(self._apply(function, *args, **kwargs))
 
         raise UnknownExpression(f"unsupported expression {type(node).__name__}")
+
+    def _checked(self, value: Any) -> Any:
+        """Check the result of a subscript or `|`, which can be a type built
+        from many others, like a `Union` grown one member per line."""
+        _check_structure(value, is_annotation=self._is_reference(value))
+        return value
 
     def _reference(self, value: Any) -> Any:
         if not self._is_reference(value):
@@ -533,6 +569,8 @@ def _bounded(value: Any) -> Any:
         and abs(value.adjusted()) > MAX_DECIMAL_EXPONENT
     ):
         raise UnknownExpression("decimal too large")
+    if isinstance(value, (str, bytes)) and len(value) > MAX_STRING_LENGTH:
+        raise UnknownExpression("string too long")
     return value
 
 

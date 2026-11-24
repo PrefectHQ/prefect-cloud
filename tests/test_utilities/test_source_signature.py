@@ -218,3 +218,34 @@ def test_keeps_strings_in_literals_and_annotated_metadata(
     schema = get_parameter_schema_from_content(source_code, "f")
 
     assert expected_schema.items() <= schema.properties["x"].items()
+
+
+def test_rebuilds_enums_that_extend_a_member_less_enum():
+    source_code = (
+        "from enum import Enum\n"
+        "class BaseEnum(str, Enum):\n"
+        "    @classmethod\n"
+        "    def values(cls):\n"
+        "        return [member.value for member in cls]\n"
+        "class Color(BaseEnum):\n"
+        "    RED = 'red'\n"
+        "def f(x: Color = Color.RED): pass\n"
+    )
+
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert [member.value for member in parameter.annotation] == ["red"]
+    assert parameter.default == "red"
+
+
+def test_rebuilt_models_accept_validation_aliases():
+    source_code = (
+        "from pydantic import BaseModel, Field\n"
+        "class M(BaseModel):\n"
+        "    req: int = Field(validation_alias='R')\n"
+        "def f(x=M(R=1)): pass\n"
+    )
+
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert parameter.default is not None
