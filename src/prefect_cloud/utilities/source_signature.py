@@ -38,6 +38,8 @@ import typing
 from typing import Annotated, Any, Literal, Optional, cast
 
 import pydantic
+import typing_extensions
+from pydantic.fields import FieldInfo
 
 logger: Logger = getLogger(__name__)
 
@@ -91,6 +93,15 @@ ARITHMETIC: dict[type[ast.operator], Any] = {
 # unbounded time and memory.
 MAX_INTEGER_BITS = 128
 MAX_DECIMAL_EXPONENT = 1000
+
+# Names can repeat a structure, as in `A1 = tuple[A0, A0]`, so its expanded size
+# doubles with each line of source.  Pydantic expands annotations and defaults
+# when it builds the schema, so larger or deeper structures count as unknown.
+MAX_STRUCTURE_ITEMS = 1000
+MAX_STRUCTURE_DEPTH = 50
+
+LITERALS: tuple[Any, ...] = (Literal, typing_extensions.Literal)
+ANNOTATED: tuple[Any, ...] = (Annotated, typing_extensions.Annotated)
 
 
 class UnparsableSource(Exception):
@@ -236,7 +247,7 @@ class SourceNamespace:
                 if statement.value is None:
                     default = ...
                 else:
-                    default = self._try_evaluate(statement.value)
+                    default = self.default(statement.value)
                 fields[statement.target.id] = (annotation, default)
         return pydantic.create_model(node.name, __base__=model_base, **fields)
 
@@ -248,8 +259,7 @@ class SourceNamespace:
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 node = ast.parse(node.value, mode="eval").body
             annotation = self.evaluate(node)
-            if _contains_forward_reference(annotation):
-                raise UnknownExpression("annotation with a forward reference")
+            _check_structure(annotation, is_annotation=True)
             return annotation
         except (UnknownExpression, SyntaxError, ValueError, RecursionError) as e:
             logger.debug("Failed to evaluate annotation: %s", e)
@@ -259,7 +269,13 @@ class SourceNamespace:
         """Evaluate a default value, or return `None` when it is unknown."""
         if node is None:
             return inspect.Parameter.empty
-        return self._try_evaluate(node)
+        value = self._try_evaluate(node)
+        try:
+            _check_structure(value, is_annotation=False)
+        except UnknownExpression as e:
+            logger.debug("Failed to evaluate default: %s", e)
+            return None
+        return value
 
     def _try_evaluate(self, node: ast.expr) -> Any:
         try:
@@ -277,7 +293,7 @@ class SourceNamespace:
 
     def _evaluate(self, node: ast.expr) -> Any:
         if isinstance(node, ast.Constant):
-            return node.value
+            return _bounded(node.value)
 
         if isinstance(node, ast.Name):
             if node.id in self.names:
@@ -292,11 +308,22 @@ class SourceNamespace:
             if node.attr.startswith("_"):
                 raise UnknownExpression(f"private attribute {node.attr!r}")
             owner = self._evaluate(node.value)
+            if (
+                isinstance(owner, enum.Enum)
+                and type(owner) in self.rebuilt_classes
+                and node.attr in ("name", "value")
+            ):
+                # The member's name and value came from this file.
+                return getattr(owner, node.attr)
             return self._reference(self._apply(getattr, owner, node.attr))
 
         if isinstance(node, ast.Subscript):
             container = self._evaluate(node.value)
             key = self._evaluate(node.slice)
+            if self._is_reference(container) and not _is_enum_class(container):
+                # Subscripting a type can resolve strings in the key as forward
+                # references right away, as pydantic's generic models do.
+                _check_subscript_key(container, key)
             return self._apply(lambda: container[key])
 
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
@@ -360,6 +387,15 @@ class SourceNamespace:
                 # instance is built from the given values as they are.
                 if args:
                     raise UnknownExpression("positional arguments to a model")
+                missing = [
+                    name
+                    for name, field in function.model_fields.items()
+                    if field.is_required()
+                    and name not in kwargs
+                    and field.alias not in kwargs
+                ]
+                if missing:
+                    raise UnknownExpression(f"missing model fields {missing}")
                 return self._apply(function.model_construct, **kwargs)
             return _bounded(self._apply(function, *args, **kwargs))
 
@@ -415,20 +451,67 @@ def _check_argument(argument: Any) -> None:
         raise UnknownExpression(f"callable argument {argument!r}")
 
 
-def _contains_forward_reference(annotation: Any) -> bool:
-    """Whether an annotation holds a string that pydantic would resolve as a
-    forward reference.  Pydantic resolves those with `eval`, so a string the
-    file built, like `X = "open(...)"` in `def f(x: X)`, would run as code."""
-    if isinstance(annotation, (str, typing.ForwardRef)):
-        return True
-    origin = typing.get_origin(annotation)
-    if origin is Literal:
-        return False
-    arguments = typing.get_args(annotation)
-    if origin is Annotated:
-        # Pydantic does not resolve strings in `Annotated` metadata.
-        arguments = arguments[:1]
-    return any(_contains_forward_reference(argument) for argument in arguments)
+def _is_enum_class(value: Any) -> bool:
+    return isinstance(value, type) and issubclass(value, enum.Enum)
+
+
+def _check_subscript_key(container: Any, key: Any) -> None:
+    items = list(key) if isinstance(key, tuple) else [key]
+    if container in LITERALS:
+        _check_structure(items, is_annotation=False)
+    elif container in ANNOTATED:
+        _check_structure(items[:1], is_annotation=True)
+        _check_structure(items[1:], is_annotation=False)
+    else:
+        _check_structure(items, is_annotation=True)
+
+
+def _check_structure(root: Any, *, is_annotation: bool) -> None:
+    """Reject an annotation or value that pydantic could not handle safely.
+
+    In an annotation, pydantic resolves a string as a forward reference with
+    `eval`, so a string the file built, like `X = "open(...)"` in `def f(x: X)`,
+    would run as code.  Strings are allowed only as `Literal` values and in
+    `Annotated` metadata, which pydantic does not resolve.  Annotations and
+    values are also limited in size and depth.  The walk is iterative and stops
+    at the size limit, so a structure that repeats itself cannot slow it down.
+    """
+    pending: list[tuple[Any, bool, int]] = [(root, is_annotation, 0)]
+    visited = 0
+    while pending:
+        value, in_annotation, depth = pending.pop()
+        visited += 1
+        if visited > MAX_STRUCTURE_ITEMS or depth > MAX_STRUCTURE_DEPTH:
+            raise UnknownExpression("structure too large")
+        if in_annotation and isinstance(value, (str, typing.ForwardRef)):
+            raise UnknownExpression("annotation with a forward reference")
+
+        children: list[tuple[Any, bool]] = []
+        if isinstance(value, (list, tuple, set, frozenset)):
+            children = [(item, in_annotation) for item in value]
+        elif isinstance(value, dict):
+            children = [
+                (item, in_annotation) for pair in value.items() for item in pair
+            ]
+        elif isinstance(value, pydantic.BaseModel):
+            children = [(item, False) for item in value.__dict__.values()]
+        elif isinstance(value, FieldInfo):
+            children = [(value.default, False)]
+        elif in_annotation:
+            origin = typing.get_origin(value)
+            arguments = typing.get_args(value)
+            if origin in LITERALS:
+                children = [(item, False) for item in arguments]
+            elif origin in ANNOTATED:
+                children = [(arguments[0], True)] + [
+                    (item, False) for item in arguments[1:]
+                ]
+            else:
+                children = [(item, True) for item in arguments]
+        pending.extend(
+            (child, child_in_annotation, depth + 1)
+            for child, child_in_annotation in children
+        )
 
 
 def _is_number(value: Any) -> bool:

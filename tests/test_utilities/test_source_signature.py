@@ -4,6 +4,7 @@ from typing import Any, Optional, Union
 
 import pytest
 
+from prefect_cloud.utilities.callables import get_parameter_schema_from_content
 from prefect_cloud.utilities.source_signature import signature_from_source
 
 
@@ -160,3 +161,60 @@ def test_rebuilds_pydantic_models_with_default_factories():
     parameter = signature_from_source(source_code, "f").parameters["x"]
 
     assert parameter.default.model_dump() == {"names": []}
+
+
+@pytest.mark.parametrize(
+    "source_code, expected_default",
+    [
+        (
+            "from enum import Enum\nclass C(Enum):\n    A = 'a'\ndef f(x=C.A.value): pass",
+            "a",
+        ),
+        ("D = {'a': [1, 2]}\ndef f(x=D['a'][1]): pass", 2),
+        (
+            "from pydantic import BaseModel\n"
+            "class M(BaseModel):\n"
+            "    a: int\n"
+            "def f(x=M()): pass",
+            None,
+        ),
+    ],
+)
+def test_reads_values_from_the_file(source_code: str, expected_default: Any):
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert parameter.default == expected_default
+
+
+def test_looks_up_enum_members_by_name():
+    source_code = (
+        "from enum import Enum\nclass C(Enum):\n    A = 'a'\ndef f(x=C['A']): pass"
+    )
+
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert parameter.default.value == "a"
+
+
+@pytest.mark.parametrize(
+    "annotation, expected_schema",
+    [
+        ("Literal['a', 'b']", {"enum": ["a", "b"], "type": "string"}),
+        (
+            "Annotated[str, Field(pattern='^a')]",
+            {"pattern": "^a", "type": "string"},
+        ),
+    ],
+)
+def test_keeps_strings_in_literals_and_annotated_metadata(
+    annotation: str, expected_schema: dict[str, Any]
+):
+    source_code = (
+        "from typing import Annotated, Literal\n"
+        "from pydantic import Field\n"
+        f"def f(x: {annotation}): pass\n"
+    )
+
+    schema = get_parameter_schema_from_content(source_code, "f")
+
+    assert expected_schema.items() <= schema.properties["x"].items()

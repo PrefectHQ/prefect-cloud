@@ -73,11 +73,16 @@ def test_does_not_run_code_from_the_source(source_code: str, marker: Path):
         "Optional[X]",
         "dict[str, X]",
         "Annotated[X, 1]",
+        "RootModel[X]",
+        "RootModel[list[X]]",
+        "RootModel[\"__import__('pathlib').Path(MARKER).touch() or int\"]",
     ],
 )
 def test_does_not_resolve_strings_built_by_the_source(annotation: str, marker: Path):
     source_code = (
         "from typing import Annotated, Optional\n"
+        "from pydantic import RootModel\n"
+        f"MARKER = {str(marker)!r}\n"
         f"PAYLOAD = \"open({str(marker)!r}, 'w').write('x')\"\n"
         "X = PAYLOAD\n"
         f"def f(x: {annotation} = 1): pass\n"
@@ -171,6 +176,13 @@ def test_rebuilt_model_errors_are_unknown():
     [
         "import decimal\ndef f(x=int(decimal.Decimal('1e999999999'))): pass",
         "def f(x=bytes(1000000000000)): pass",
+        "A = 0x" + "f" * 200000 + "\nB = A * A\ndef f(x=B): pass",
+        "D0 = 1\n"
+        + "".join(f"D{i} = [D{i - 1}, D{i - 1}]\n" for i in range(1, 60))
+        + "def f(x=D59): pass",
+        "D0 = 1\n"
+        + "".join(f"D{i} = [D{i - 1}]\n" for i in range(1, 3000))
+        + "def f(x=D2999): pass",
         "A = 99999999\n"
         + "".join(
             f"A{i} = A{i - 1 if i else ''} * A{i - 1 if i else ''}\n" for i in range(40)
@@ -190,6 +202,12 @@ def test_huge_values_are_unknown(source_code: str):
         "def f(x: " + " | ".join(["int"] * 5000) + "): pass",
         "def f(x: '" + " | ".join(["int"] * 5000) + "'): pass",
         "def f(x: '\\0'): pass",
+        "A0 = int\n"
+        + "".join(f"A{i} = tuple[A{i - 1}, A{i - 1}]\n" for i in range(1, 60))
+        + "def f(x: A59): pass",
+        "from pydantic import RootModel\nA0 = int\n"
+        + "".join(f"A{i} = tuple[A{i - 1}, A{i - 1}]\n" for i in range(1, 60))
+        + "def f(x: RootModel[A59]): pass",
     ],
 )
 def test_unreadable_annotations_are_unknown(source_code: str):
