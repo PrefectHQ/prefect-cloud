@@ -4,6 +4,7 @@ tests write source that tries to run code, read the environment, or exhaust
 the reader, and check that none of it gets through.
 """
 
+import ast
 import inspect
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import pytest
 
 from prefect_cloud.utilities.callables import get_parameter_schema_from_content
 from prefect_cloud.utilities.source_signature import (
+    SourceNamespace,
     UnparsableSource,
     signature_from_source,
 )
@@ -216,7 +218,6 @@ def test_huge_values_are_unknown(source_code: str):
 @pytest.mark.parametrize(
     "source_code",
     [
-        "def f(x: " + " | ".join(["int"] * 5000) + "): pass",
         "def f(x: '" + " | ".join(["int"] * 5000) + "'): pass",
         "def f(x: '\\0'): pass",
         "A0 = int\n"
@@ -278,3 +279,18 @@ def test_stops_rebuilding_models_after_too_many_fields():
     parameter = signature_from_source(source_code, "f").parameters["x"]
 
     assert not issubclass(parameter.annotation, pydantic.BaseModel)
+
+
+def union_chain(length: int) -> ast.expr:
+    """An `int | int | ...` expression built directly, because how deep an
+    expression `ast.parse` accepts differs between Python builds."""
+    node: ast.expr = ast.Name("int")
+    for _ in range(length):
+        node = ast.BinOp(node, ast.BitOr(), ast.Name("int"))
+    return node
+
+
+def test_deeply_nested_annotations_are_unknown():
+    namespace = SourceNamespace(ast.Module(body=[], type_ignores=[]))
+
+    assert namespace.annotation(union_chain(5000)) is inspect.Parameter.empty
