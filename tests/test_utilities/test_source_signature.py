@@ -249,3 +249,31 @@ def test_rebuilt_models_accept_validation_aliases():
     parameter = signature_from_source(source_code, "f").parameters["x"]
 
     assert parameter.default is not None
+
+
+@pytest.mark.parametrize(
+    "default, expected_default",
+    [
+        ("M(a=5)", {"a": 5}),
+        ("M(a='5')", {"a": 5}),
+        ("M(a='bad')", None),
+        ("Outer()", {"inner": {"a": 1}}),
+    ],
+)
+def test_validates_defaults_of_models_with_standard_field_types(
+    default: str, expected_default: Any
+):
+    source_code = (
+        "from pydantic import BaseModel, Field\n"
+        "class M(BaseModel):\n"
+        "    a: int\n"
+        "class Inner(BaseModel):\n"
+        "    a: int = 1\n"
+        "class Outer(BaseModel):\n"
+        "    inner: Inner = Field(default_factory=Inner)\n"
+        f"def f(x={default}): pass\n"
+    )
+
+    schema = get_parameter_schema_from_content(source_code, "f")
+
+    assert schema.properties["x"].get("default") == expected_default

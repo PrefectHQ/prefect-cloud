@@ -41,6 +41,8 @@ import pydantic
 import typing_extensions
 from pydantic.fields import FieldInfo
 
+from prefect_cloud.utilities.source_validation import model_validates_safely
+
 logger: Logger = getLogger(__name__)
 
 # Calling these with literal arguments only builds a value, so a default like
@@ -127,6 +129,9 @@ class SourceNamespace:
         self.names: dict[str, Any] = {}
         # Classes rebuilt from this file; calling them only validates field values.
         self.rebuilt_classes: list[type] = []
+        # Rebuilt classes that pydantic can validate without running installed
+        # code, so calling them validates values from the file.
+        self.trusted_classes: list[type] = []
         self.rebuilt_members = 0
         for node in module.body:
             self._bind(node)
@@ -199,6 +204,10 @@ class SourceNamespace:
             logger.debug("Failed to rebuild class %s: %s", node.name, e)
             return type(node.name, (), {})
         self.rebuilt_classes.append(rebuilt)
+        if _is_enum_class(rebuilt) or model_validates_safely(
+            cast(type[pydantic.BaseModel], rebuilt), self.trusted_classes
+        ):
+            self.trusted_classes.append(rebuilt)
         return rebuilt
 
     def _is_enum_base(self, base: Any) -> bool:
@@ -406,8 +415,17 @@ class SourceNamespace:
                 for keyword in node.keywords
                 if keyword.arg is not None
             }
+            if function is pydantic.Field and not self._is_factory(
+                kwargs.get("default_factory", list)
+            ):
+                # The schema step never calls a `default_factory`, so a field
+                # whose factory is refused keeps it as a placeholder.  The
+                # field then has no default in the schema rather than `None`.
+                kwargs["default_factory"] = _unknown_default
             for argument in [*args, *kwargs.values()]:
-                _check_argument(argument)
+                _check_structure(argument, is_annotation=False)
+                if callable(argument) and not self._is_factory(argument):
+                    raise UnknownExpression(f"callable argument {argument!r}")
             # `Path(P, P, ...)` joins its arguments, so repeating a path in
             # each line of source would double its length per line.
             if (
@@ -415,6 +433,16 @@ class SourceNamespace:
                 > MAX_STRING_LENGTH
             ):
                 raise UnknownExpression("arguments too long")
+            if (
+                args
+                and function in self.rebuilt_classes
+                and issubclass(function, pydantic.BaseModel)
+            ):
+                raise UnknownExpression("positional arguments to a model")
+            if function in self.trusted_classes and issubclass(
+                function, pydantic.BaseModel
+            ):
+                return self._apply(function.model_validate, kwargs)
             if function in self.rebuilt_classes and issubclass(
                 function, pydantic.BaseModel
             ):
@@ -422,8 +450,6 @@ class SourceNamespace:
                 # like a `BaseSettings` that reads the environment or an
                 # `ImportString` that imports any installed object, so the
                 # instance is built from the given values as they are.
-                if args:
-                    raise UnknownExpression("positional arguments to a model")
                 missing = [
                     name
                     for name, field in function.model_fields.items()
@@ -440,6 +466,16 @@ class SourceNamespace:
             return _bounded(self._apply(function, *args, **kwargs))
 
         raise UnknownExpression(f"unsupported expression {type(node).__name__}")
+
+    def _is_factory(self, value: Any) -> bool:
+        """Whether pydantic may call `value` as a `default_factory`: a value
+        constructor, a placeholder, or a class from this file whose
+        validation runs no installed code."""
+        return (
+            any(value is allowed for allowed in VALUE_CONSTRUCTORS)
+            or value is _unknown_default
+            or value in self.trusted_classes
+        )
 
     def _checked(self, value: Any) -> Any:
         """Check the result of a subscript or `|`, which can be a type built
@@ -481,18 +517,9 @@ class SourceNamespace:
             raise UnknownExpression(str(e)) from e
 
 
-def _check_argument(argument: Any) -> None:
-    """Arguments to value constructors have to be data.
-
-    A callable argument could be called later, as pydantic calls a
-    `default_factory`, so it has to be one of `VALUE_CONSTRUCTORS`.  Rebuilt
-    model classes are not allowed there, because calling one validates its
-    fields."""
-    _check_structure(argument, is_annotation=False)
-    if callable(argument) and not any(
-        argument is allowed for allowed in VALUE_CONSTRUCTORS
-    ):
-        raise UnknownExpression(f"callable argument {argument!r}")
+def _unknown_default() -> None:
+    """Stands in for a `default_factory` that the reader refused."""
+    return None
 
 
 def _is_enum_class(value: Any) -> bool:

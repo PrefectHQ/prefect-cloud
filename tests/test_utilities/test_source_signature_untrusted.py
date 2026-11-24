@@ -300,3 +300,20 @@ def test_deeply_nested_annotations_are_unknown():
     namespace = SourceNamespace(ast.Module(body=[], type_ignores=[]))
 
     assert namespace.annotation(union_chain(5000)) is inspect.Parameter.empty
+
+
+def test_refused_default_factories_leave_the_field_without_a_default():
+    source_code = (
+        "import pydantic\n"
+        "class Inner(pydantic.BaseModel):\n"
+        "    env: pydantic.ImportString = 'os'\n"
+        "class Outer(pydantic.BaseModel):\n"
+        "    inner: Inner = pydantic.Field(default_factory=Inner)\n"
+        "def f(x: Outer): pass\n"
+    )
+
+    schema = get_parameter_schema_from_content(source_code, "f")
+
+    inner = schema.definitions["Outer"]["properties"]["inner"]
+    assert "default" not in inner
+    assert "inner" not in schema.definitions["Outer"].get("required", [])
