@@ -199,6 +199,12 @@ def test_rebuilt_model_errors_are_unknown():
             f"X{i} = str([{', '.join([f'X{i - 1}'] * 900)}])\n" for i in (1, 2, 3)
         )
         + "def f(x=X3): pass",
+        "import pathlib\nP0 = pathlib.Path('aaaaaaaaaa')\n"
+        + "".join(
+            f"P{i} = pathlib.Path({', '.join([f'P{i - 1}'] * 50)})\n"
+            for i in (1, 2, 3, 4)
+        )
+        + "def f(x=P4): pass",
         "T0 = (1, 2)\n"
         + "".join(f"T{i} = (T{i - 1}, T{i - 1})\n" for i in range(1, 40))
         + "D = {T39: 1}\ndef f(x=D): pass",

@@ -408,6 +408,13 @@ class SourceNamespace:
             }
             for argument in [*args, *kwargs.values()]:
                 _check_argument(argument)
+            # `Path(P, P, ...)` joins its arguments, so repeating a path in
+            # each line of source would double its length per line.
+            if (
+                sum(_text_length(argument) for argument in [*args, *kwargs.values()])
+                > MAX_STRING_LENGTH
+            ):
+                raise UnknownExpression("arguments too long")
             if function in self.rebuilt_classes and issubclass(
                 function, pydantic.BaseModel
             ):
@@ -569,9 +576,17 @@ def _bounded(value: Any) -> Any:
         and abs(value.adjusted()) > MAX_DECIMAL_EXPONENT
     ):
         raise UnknownExpression("decimal too large")
-    if isinstance(value, (str, bytes)) and len(value) > MAX_STRING_LENGTH:
+    if _text_length(value) > MAX_STRING_LENGTH:
         raise UnknownExpression("string too long")
     return value
+
+
+def _text_length(value: Any) -> int:
+    if isinstance(value, (str, bytes)):
+        return len(value)
+    if isinstance(value, pathlib.PurePath):
+        return len(str(value))
+    return 0
 
 
 def signature_from_source(source_code: str, func_name: str) -> inspect.Signature:
