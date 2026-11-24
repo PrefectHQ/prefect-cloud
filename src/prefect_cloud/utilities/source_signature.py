@@ -266,7 +266,9 @@ class SourceNamespace:
         if isinstance(node, ast.Call):
             function = self.evaluate(node.func)
             if not self._is_value_constructor(function):
-                raise UnknownExpression(f"call to {function!r}")
+                raise UnknownExpression(
+                    f"{function!r} is not a permitted value constructor"
+                )
             if any(isinstance(arg, ast.Starred) for arg in node.args) or any(
                 keyword.arg is None for keyword in node.keywords
             ):
