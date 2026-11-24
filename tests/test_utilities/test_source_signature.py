@@ -115,3 +115,48 @@ def test_reads_every_parameter_kind():
         ("kwargs", inspect.Parameter.VAR_KEYWORD),
     ]
     assert signature.return_annotation is int
+
+
+def test_rebuilds_enums_with_auto_values():
+    source_code = (
+        "import enum\n"
+        "class Level(enum.IntEnum):\n"
+        "    LOW = enum.auto()\n"
+        "    HIGH = enum.auto()\n"
+        "def f(x: Level = Level.HIGH): pass\n"
+    )
+
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert [member.value for member in parameter.annotation] == [1, 2]
+    assert parameter.default == 2
+
+
+@pytest.mark.parametrize(
+    "source_code, expected_default",
+    [
+        ("def f(x=60 * 60): pass", 3600),
+        ("HOUR = 60 * 60\ndef f(x=HOUR * 24 - 1): pass", 86399),
+        ("def f(x=1 / 4): pass", 0.25),
+        ("def f(x=7 // 2 + 7 % 2): pass", 4),
+        ("def f(x=1 / 0): pass", None),
+        ("def f(x='a' + 'b'): pass", None),
+    ],
+)
+def test_evaluates_arithmetic_on_numbers(source_code: str, expected_default: Any):
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert parameter.default == expected_default
+
+
+def test_rebuilds_pydantic_models_with_default_factories():
+    source_code = (
+        "from pydantic import BaseModel, Field\n"
+        "class Tags(BaseModel):\n"
+        "    names: list[str] = Field(default_factory=list)\n"
+        "def f(x: Tags = Tags()): pass\n"
+    )
+
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert parameter.default.model_dump() == {"names": []}

@@ -4,13 +4,21 @@ Reads a function's signature from Python source code without running the source.
 `prefect-cloud deploy` builds a flow's parameter schema from a file it downloads
 from GitHub, which may be someone else's code.  Running any part of that file
 would run it on the deploying machine with the user's credentials, so the file
-is only parsed.  Its absolute imports are resolved against installed modules,
-enum and pydantic model classes are rebuilt from their field declarations, and
-annotations and default values are evaluated by `SourceNamespace.evaluate`,
-which permits literals, names, public attributes, subscripts, `|`, and calls to
-a fixed set of value constructors.  Anything else counts as unknown: an unknown
-annotation becomes `inspect.Parameter.empty`, and an unknown default becomes
-`None`.
+is only parsed.
+
+Its absolute imports are resolved against installed modules.  Importing a
+module runs that module's top-level code, which is code the user installed, not
+code from the file.  From installed modules, the file may only reach modules,
+classes, typing constructs, enum members, and the value constructors in
+`VALUE_CONSTRUCTORS`.  Other installed values, like `os.environ` or a settings
+object, are unknown, so they cannot end up in the uploaded schema.
+
+Enum and pydantic model classes are rebuilt from their declarations, using only
+the standard enum and pydantic base classes.  Annotations and default values
+are evaluated by `SourceNamespace.evaluate`, which permits literals, names,
+public attributes, subscripts, `|`, arithmetic on numbers, and calls to value
+constructors.  Anything else counts as unknown: an unknown annotation becomes
+`inspect.Parameter.empty`, and an unknown default becomes `None`.
 """
 
 import ast
@@ -20,7 +28,10 @@ import decimal
 import enum
 import importlib
 import inspect
+import operator
 import pathlib
+import sys
+import types
 import uuid
 from logging import Logger, getLogger
 from typing import Any, Optional, cast
@@ -31,9 +42,9 @@ logger: Logger = getLogger(__name__)
 
 # Calling these with literal arguments only builds a value, so a default like
 # `datetime.date(2025, 1, 1)` or `Field(default=1)` can be evaluated safely.
+# `bytes` is left out because `bytes(n)` allocates n bytes.
 VALUE_CONSTRUCTORS: tuple[Any, ...] = (
     bool,
-    bytes,
     complex,
     dict,
     float,
@@ -48,6 +59,7 @@ VALUE_CONSTRUCTORS: tuple[Any, ...] = (
     datetime.time,
     datetime.timedelta,
     datetime.timezone,
+    enum.auto,
     decimal.Decimal,
     pathlib.Path,
     pathlib.PurePath,
@@ -56,6 +68,32 @@ VALUE_CONSTRUCTORS: tuple[Any, ...] = (
     uuid.UUID,
     pydantic.Field,
 )
+
+# Enums are rebuilt only from these bases, because any other base class's code
+# would run on member values from the file.
+ENUM_BASES: tuple[type, ...] = (enum.Enum, enum.IntEnum, enum.Flag, enum.IntFlag) + (
+    (enum.StrEnum,) if sys.version_info >= (3, 11) else ()
+)
+ENUM_MIXINS: tuple[type, ...] = (str, int, float)
+
+ARITHMETIC: dict[type[ast.operator], Any] = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+}
+
+# Repeated multiplication doubles an integer's size with each line of source, so
+# integers and decimals past these bounds count as unknown rather than taking
+# unbounded time and memory.
+MAX_INTEGER_BITS = 128
+MAX_DECIMAL_EXPONENT = 1000
+
+
+class UnparsableSource(Exception):
+    """The source is not Python that this interpreter can parse."""
 
 
 class UnknownExpression(Exception):
@@ -122,14 +160,17 @@ class SourceNamespace:
         except Exception as e:
             logger.debug("Failed to import %s from %s: %s", alias.name, module_name, e)
             return
+        if not self._is_reference(value):
+            logger.debug("Not importing value %s from %s", alias.name, module_name)
+            return
         self.names[alias.asname or alias.name] = value
 
     def _rebuild_class(self, node: ast.ClassDef) -> type:
         bases = [base for base in map(self._try_evaluate, node.bases) if base]
         try:
-            if enum_base := _first_subclass(bases, enum.Enum):
-                rebuilt = self._rebuild_enum(node, enum_base, bases)
-            elif model_base := _first_subclass(bases, pydantic.BaseModel):
+            if any(base in ENUM_BASES for base in bases):
+                rebuilt = self._rebuild_enum(node, bases)
+            elif model_base := self._model_base(bases):
                 rebuilt = self._rebuild_model(node, model_base)
             else:
                 return type(node.name, (), {})
@@ -139,39 +180,54 @@ class SourceNamespace:
         self.rebuilt_classes.append(rebuilt)
         return rebuilt
 
-    def _rebuild_enum(
-        self, node: ast.ClassDef, enum_base: type[enum.Enum], bases: list[Any]
-    ) -> type:
-        members: dict[str, Any] = {}
+    def _rebuild_enum(self, node: ast.ClassDef, bases: list[Any]) -> type:
+        if not all(base in ENUM_BASES or base in ENUM_MIXINS for base in bases):
+            raise UnknownExpression("enum with a base outside the standard library")
+        enum_base: type[enum.Enum] = next(base for base in bases if base in ENUM_BASES)
+        mixin = next((base for base in bases if base in ENUM_MIXINS), None)
+        members: list[tuple[str, Any]] = []
         for statement in node.body:
             if (
                 isinstance(statement, ast.Assign)
                 and len(statement.targets) == 1
                 and isinstance(statement.targets[0], ast.Name)
+                # Enum reads underscored names like `_missing_` and `__new__` as
+                # hooks that it calls, not as members.
+                and not statement.targets[0].id.startswith("_")
             ):
                 try:
-                    members[statement.targets[0].id] = self.evaluate(statement.value)
+                    value = self.evaluate(statement.value)
                 except UnknownExpression:
                     continue
-        mixin = next(
-            (
-                base
-                for base in bases
-                if isinstance(base, type) and not issubclass(base, enum.Enum)
-            ),
-            None,
-        )
+                members.append((statement.targets[0].id, value))
         # Enum's functional API returns a new class, which type checkers read as
         # an instance of `enum_base`.
         return cast(type, enum_base(node.name, members, type=mixin))
+
+    def _model_base(self, bases: list[Any]) -> Optional[type[pydantic.BaseModel]]:
+        # Subclasses like pydantic-settings' `BaseSettings` read the environment
+        # and files when they are built, so only plain models are rebuilt.
+        return next(
+            (
+                base
+                for base in bases
+                if base is pydantic.BaseModel or base in self.rebuilt_classes
+            ),
+            None,
+        )
 
     def _rebuild_model(
         self, node: ast.ClassDef, model_base: type[pydantic.BaseModel]
     ) -> type:
         fields: dict[str, Any] = {}
         for statement in node.body:
-            if isinstance(statement, ast.AnnAssign) and isinstance(
-                statement.target, ast.Name
+            if (
+                isinstance(statement, ast.AnnAssign)
+                and isinstance(statement.target, ast.Name)
+                # Pydantic treats underscored names as private attributes, and
+                # `create_model` reads dunder keywords like `__validators__` as
+                # options, not fields.
+                and not statement.target.id.startswith("_")
             ):
                 annotation = self.annotation(statement.annotation)
                 if annotation is inspect.Parameter.empty:
@@ -191,7 +247,7 @@ class SourceNamespace:
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 node = ast.parse(node.value, mode="eval").body
             return self.evaluate(node)
-        except (UnknownExpression, SyntaxError) as e:
+        except (UnknownExpression, SyntaxError, ValueError, RecursionError) as e:
             logger.debug("Failed to evaluate annotation: %s", e)
             return inspect.Parameter.empty
 
@@ -210,6 +266,12 @@ class SourceNamespace:
 
     def evaluate(self, node: ast.expr) -> Any:
         """Evaluate an expression from the source using only permitted operations."""
+        try:
+            return self._evaluate(node)
+        except RecursionError as e:
+            raise UnknownExpression("expression nested too deeply") from e
+
+    def _evaluate(self, node: ast.expr) -> Any:
         if isinstance(node, ast.Constant):
             return node.value
 
@@ -217,7 +279,7 @@ class SourceNamespace:
             if node.id in self.names:
                 return self.names[node.id]
             if hasattr(builtins, node.id):
-                return getattr(builtins, node.id)
+                return self._reference(getattr(builtins, node.id))
             raise UnknownExpression(f"unknown name {node.id!r}")
 
         if isinstance(node, ast.Attribute):
@@ -225,28 +287,32 @@ class SourceNamespace:
             # like `().__class__.__base__.__subclasses__()`.
             if node.attr.startswith("_"):
                 raise UnknownExpression(f"private attribute {node.attr!r}")
-            owner = self.evaluate(node.value)
-            return self._apply(getattr, owner, node.attr)
+            owner = self._evaluate(node.value)
+            return self._reference(self._apply(getattr, owner, node.attr))
 
         if isinstance(node, ast.Subscript):
-            container = self.evaluate(node.value)
-            key = self.evaluate(node.slice)
+            container = self._evaluate(node.value)
+            key = self._evaluate(node.slice)
             return self._apply(lambda: container[key])
 
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-            left, right = self.evaluate(node.left), self.evaluate(node.right)
+            left, right = self._evaluate(node.left), self._evaluate(node.right)
             return self._apply(lambda: left | right)
 
+        if isinstance(node, ast.BinOp) and type(node.op) in ARITHMETIC:
+            left, right = self._evaluate(node.left), self._evaluate(node.right)
+            if not (_is_number(left) and _is_number(right)):
+                raise UnknownExpression("arithmetic on a non-number")
+            return _bounded(self._apply(ARITHMETIC[type(node.op)], left, right))
+
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
-            operand = self.evaluate(node.operand)
-            if not isinstance(operand, (int, float, complex)) or isinstance(
-                operand, bool
-            ):
+            operand = self._evaluate(node.operand)
+            if not _is_number(operand):
                 raise UnknownExpression("unary operator on a non-number")
             return -operand if isinstance(node.op, ast.USub) else operand
 
         if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
-            items = [self.evaluate(element) for element in node.elts]
+            items = [self._evaluate(element) for element in node.elts]
             if isinstance(node, ast.Tuple):
                 return tuple(items)
             return items if isinstance(node, ast.List) else self._apply(set, items)
@@ -257,14 +323,14 @@ class SourceNamespace:
             return self._apply(
                 dict,
                 [
-                    (self.evaluate(key), self.evaluate(value))
+                    (self._evaluate(key), self._evaluate(value))
                     for key, value in zip(node.keys, node.values)
                     if key is not None
                 ],
             )
 
         if isinstance(node, ast.Call):
-            function = self.evaluate(node.func)
+            function = self._evaluate(node.func)
             if not self._is_value_constructor(function):
                 raise UnknownExpression(
                     f"{function!r} is not a permitted value constructor"
@@ -273,15 +339,50 @@ class SourceNamespace:
                 keyword.arg is None for keyword in node.keywords
             ):
                 raise UnknownExpression("argument unpacking")
-            args = [self.evaluate(arg) for arg in node.args]
+            args = [self._evaluate(arg) for arg in node.args]
             kwargs = {
-                keyword.arg: self.evaluate(keyword.value)
+                keyword.arg: self._evaluate(keyword.value)
                 for keyword in node.keywords
                 if keyword.arg is not None
             }
-            return self._apply(function, *args, **kwargs)
+            # A callable argument could be called later, as pydantic calls a
+            # `default_factory`, so it has to be a value constructor too.
+            for argument in [*args, *kwargs.values()]:
+                if callable(argument) and not self._is_value_constructor(argument):
+                    raise UnknownExpression(f"callable argument {argument!r}")
+            if function in self.rebuilt_classes and issubclass(
+                function, pydantic.BaseModel
+            ):
+                # Validating would build the values of installed field types,
+                # like a `BaseSettings` that reads the environment, so the
+                # instance is built from the given values as they are.
+                if args:
+                    raise UnknownExpression("positional arguments to a model")
+                return function.model_construct(**kwargs)
+            return _bounded(self._apply(function, *args, **kwargs))
 
         raise UnknownExpression(f"unsupported expression {type(node).__name__}")
+
+    def _reference(self, value: Any) -> Any:
+        if not self._is_reference(value):
+            raise UnknownExpression(f"reference to the value {type(value).__name__}")
+        return value
+
+    def _is_reference(self, value: Any) -> bool:
+        """Whether a value reached through an import, attribute, or builtin may
+        be used.  Data like `os.environ` may not, because the file could place
+        it in a default value that is uploaded with the schema."""
+        return (
+            isinstance(
+                value,
+                (type, types.ModuleType, types.GenericAlias, types.UnionType),
+            )
+            # Enum members and time zones like `datetime.timezone.utc` are
+            # constants of the installed code, not configuration.
+            or isinstance(value, (enum.Enum, datetime.tzinfo))
+            or type(value).__module__ in ("typing", "typing_extensions")
+            or self._is_value_constructor(value)
+        )
 
     def _is_value_constructor(self, function: Any) -> bool:
         return any(function is allowed for allowed in VALUE_CONSTRUCTORS) or any(
@@ -296,16 +397,28 @@ class SourceNamespace:
             raise UnknownExpression(str(e)) from e
 
 
-def _first_subclass(bases: list[Any], parent: type) -> Optional[Any]:
-    return next(
-        (base for base in bases if isinstance(base, type) and issubclass(base, parent)),
-        None,
-    )
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float, complex)) and not isinstance(value, bool)
+
+
+def _bounded(value: Any) -> Any:
+    if isinstance(value, int) and value.bit_length() > MAX_INTEGER_BITS:
+        raise UnknownExpression("integer too large")
+    if (
+        isinstance(value, decimal.Decimal)
+        and value.is_finite()
+        and abs(value.adjusted()) > MAX_DECIMAL_EXPONENT
+    ):
+        raise UnknownExpression("decimal too large")
+    return value
 
 
 def signature_from_source(source_code: str, func_name: str) -> inspect.Signature:
     """Read the signature of the function named `func_name` in `source_code`."""
-    module = ast.parse(source_code)
+    try:
+        module = ast.parse(source_code)
+    except (SyntaxError, ValueError, RecursionError, MemoryError) as e:
+        raise UnparsableSource(str(e)) from e
     func_def = next(
         (
             node
