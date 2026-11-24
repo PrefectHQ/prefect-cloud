@@ -9,8 +9,8 @@ import pytest
 from pydantic import SecretStr
 
 from prefect_cloud.utilities.callables import (
+    get_parameter_schema_from_content,
     parameter_schema,
-    parameter_schema_from_entrypoint,
 )
 
 
@@ -720,29 +720,61 @@ class TestParseFlowDescriptionToSchema:
         }
 
 
-class TestEntrypointToSchema:
-    def test_function_not_found(self, tmp_path: Path):
+@pytest.mark.parametrize(
+    "source_code",
+    [
+        pytest.param("MARKER = touch()\n\ndef f(x):\n    pass\n", id="assignment"),
+        pytest.param(
+            "class Foo:\n    marker = touch()\n\ndef f(x: Foo):\n    pass\n",
+            id="class body",
+        ),
+        pytest.param(
+            "import pydantic\n\nclass Foo(pydantic.BaseModel):\n    y: int = touch()\n\n"
+            "def f(x: Foo):\n    pass\n",
+            id="model field default",
+        ),
+        pytest.param("@touch()\ndef f(x):\n    pass\n", id="decorator"),
+        pytest.param("def f(x=touch()):\n    pass\n", id="default"),
+        pytest.param("def f(*, x=touch()):\n    pass\n", id="keyword-only default"),
+        pytest.param("def f(x: touch()):\n    pass\n", id="annotation"),
+        pytest.param('def f(x: "touch()"):\n    pass\n', id="string annotation"),
+        pytest.param("def f(x) -> touch():\n    pass\n", id="return annotation"),
+        pytest.param(
+            "def f(x=().__class__.__base__.__subclasses__()):\n    pass\n",
+            id="dunder attribute",
+        ),
+    ],
+)
+def test_schema_from_source_does_not_run_the_source(tmp_path: Path, source_code: str):
+    marker = tmp_path / "marker"
+    touch = f"__import__('pathlib').Path({str(marker)!r}).touch"
+
+    get_parameter_schema_from_content(source_code.replace("touch", touch), "f")
+
+    assert not marker.exists()
+
+
+class TestSourceToSchema:
+    def test_function_not_found(self):
         source_code = dedent(
             """
         def f():
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
 
         with pytest.raises(ValueError):
-            parameter_schema_from_entrypoint(f"{tmp_path}/test.py:g")
+            get_parameter_schema_from_content(source_code, "g")
 
-    def test_simple_function_with_no_arguments(self, tmp_path: Path):
+    def test_simple_function_with_no_arguments(self):
         source_code = dedent(
             """
         def f():
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
 
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "properties": {},
             "title": "Parameters",
@@ -750,7 +782,7 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_pydantic_base_model_collisions(self, tmp_path: Path):
+    def test_function_with_pydantic_base_model_collisions(self):
         source_code = dedent(
             """
         def f(
@@ -769,8 +801,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -803,15 +834,14 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_one_required_argument(self, tmp_path: Path):
+    def test_function_with_one_required_argument(self):
         source_code = dedent(
             """
         def f(x):
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -820,15 +850,14 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_one_optional_argument(self, tmp_path: Path):
+    def test_function_with_one_optional_argument(self):
         source_code = dedent(
             """
         def f(x=42):
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -836,15 +865,14 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_one_optional_annotated_argument(self, tmp_path: Path):
+    def test_function_with_one_optional_annotated_argument(self):
         source_code = dedent(
             """
         def f(x: int = 42):
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -854,15 +882,14 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_two_arguments(self, tmp_path: Path):
+    def test_function_with_two_arguments(self):
         source_code = dedent(
             """
         def f(x: int, y: float = 5.0):
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -874,7 +901,7 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_datetime_arguments(self, tmp_path: Path):
+    def test_function_with_datetime_arguments(self):
         source_code = dedent(
             """
         import datetime                 
@@ -893,8 +920,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         expected_schema = {
             "title": "Parameters",
             "type": "object",
@@ -944,7 +970,7 @@ class TestEntrypointToSchema:
         }
         assert schema.model_dump_for_openapi() == expected_schema
 
-    def test_function_with_enum_argument(self, tmp_path: Path):
+    def test_function_with_enum_argument(self):
         class Color(Enum):
             RED = "RED"
             GREEN = "GREEN"
@@ -963,8 +989,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
 
         expected_schema = {
             "title": "Parameters",
@@ -987,7 +1012,7 @@ class TestEntrypointToSchema:
         }
         assert schema.model_dump_for_openapi() == expected_schema
 
-    def test_function_with_generic_arguments(self, tmp_path: Path):
+    def test_function_with_generic_arguments(self):
         source_code = dedent(
             """
         from typing import List, Dict, Any, Tuple, Union
@@ -1002,8 +1027,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
 
         expected_schema = {
             "title": "Parameters",
@@ -1046,7 +1070,7 @@ class TestEntrypointToSchema:
 
         assert schema.model_dump_for_openapi() == expected_schema
 
-    def test_function_with_user_defined_type(self, tmp_path: Path):
+    def test_function_with_user_defined_type(self):
         source_code = dedent(
             """
         class Foo:
@@ -1056,9 +1080,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -1067,7 +1089,7 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_user_defined_pydantic_model(self, tmp_path: Path):
+    def test_function_with_user_defined_pydantic_model(self):
         source_code = dedent(
             """
         import pydantic
@@ -1080,9 +1102,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "definitions": {
                 "Foo": {
@@ -1107,9 +1127,7 @@ class TestEntrypointToSchema:
             "type": "object",
         }
 
-    def test_function_with_pydantic_model_default_across_v1_and_v2(
-        self, tmp_path: Path
-    ):
+    def test_function_with_pydantic_model_default_across_v1_and_v2(self):
         source_code = dedent(
             """
         import pydantic
@@ -1121,9 +1139,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -1145,7 +1161,7 @@ class TestEntrypointToSchema:
             },
         }
 
-    def test_function_with_complex_args_across_v1_and_v2(self, tmp_path: Path):
+    def test_function_with_complex_args_across_v1_and_v2(self):
         source_code = dedent(
             """
         import pydantic
@@ -1198,9 +1214,7 @@ class TestEntrypointToSchema:
             "title": "Color",
             "type": "string",
         }
-
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
 
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
@@ -1254,7 +1268,7 @@ class TestEntrypointToSchema:
             },
         }
 
-    def test_function_with_secretstr(self, tmp_path: Path):
+    def test_function_with_secretstr(self):
         source_code = dedent(
             """
         from pydantic import SecretStr
@@ -1263,8 +1277,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -1281,7 +1294,7 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_v1_secretstr_from_compat_module(self, tmp_path: Path):
+    def test_function_with_v1_secretstr_from_compat_module(self):
         source_code = dedent(
             """
         import pydantic.v1 as pydantic
@@ -1290,8 +1303,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -1305,7 +1317,7 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_flow_with_args_docstring(self, tmp_path: Path):
+    def test_flow_with_args_docstring(self):
         source_code = dedent(
             '''
         def f(x):
@@ -1316,8 +1328,7 @@ class TestEntrypointToSchema:
             """
         '''
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -1328,15 +1339,14 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_flow_without_args_docstring(self, tmp_path: Path):
+    def test_flow_without_args_docstring(self):
         source_code = dedent(
             '''
         def f(x):
             """Function f."""
         '''
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -1345,7 +1355,7 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_flow_with_complex_args_docstring(self, tmp_path: Path):
+    def test_flow_with_complex_args_docstring(self):
         source_code = dedent(
             '''
         def f(x, y):
@@ -1363,8 +1373,7 @@ class TestEntrypointToSchema:
             """
         '''
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
@@ -1384,7 +1393,7 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_does_not_raise_when_missing_dependencies(self, tmp_path: Path):
+    def test_does_not_raise_when_missing_dependencies(self):
         source_code = dedent(
             """
         import bipitty_boopity
@@ -1393,8 +1402,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
 
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
@@ -1404,7 +1412,7 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_handles_dynamically_created_models(self, tmp_path: Path):
+    def test_dynamically_created_models_are_untyped(self):
         source_code = dedent(
             """
             from pydantic import BaseModel, create_model, Field
@@ -1432,35 +1440,16 @@ class TestEntrypointToSchema:
                 pass        
             """
         )
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "title": "Parameters",
             "type": "object",
-            "properties": {
-                "param": {
-                    "$ref": "#/definitions/MyModel",
-                    "position": 0,
-                    "title": "param",
-                }
-            },
+            "properties": {"param": {"position": 0, "title": "param"}},
             "required": ["param"],
-            "definitions": {
-                "MyModel": {
-                    "properties": {
-                        "param": {
-                            "default": 1,
-                            "title": "param",
-                            "type": "integer",
-                        }
-                    },
-                    "title": "MyModel",
-                    "type": "object",
-                }
-            },
+            "definitions": {},
         }
 
-    def test_function_with_kwargs_only(self, tmp_path: Path):
+    def test_function_with_kwargs_only(self):
         source_code = dedent(
             """
         def f(
@@ -1470,9 +1459,7 @@ class TestEntrypointToSchema:
             pass
         """
         )
-
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "properties": {
                 "x": {"title": "x", "position": 0, "type": "integer", "default": 42}
@@ -1482,16 +1469,14 @@ class TestEntrypointToSchema:
             "definitions": {},
         }
 
-    def test_function_with_positional_only_args(self, tmp_path: Path):
+    def test_function_with_positional_only_args(self):
         source_code = dedent(
             """
         def f(x=1, /, y=2, z=3):
             pass
         """
         )
-
-        tmp_path.joinpath("test.py").write_text(source_code)
-        schema = parameter_schema_from_entrypoint(f"{tmp_path}/test.py:f")
+        schema = get_parameter_schema_from_content(source_code, "f")
         assert schema.model_dump_for_openapi() == {
             "properties": {
                 "x": {"title": "x", "position": 0, "default": 1},
