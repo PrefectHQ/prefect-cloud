@@ -34,7 +34,8 @@ import sys
 import types
 import uuid
 from logging import Logger, getLogger
-from typing import Any, Optional, cast
+import typing
+from typing import Annotated, Any, Literal, Optional, cast
 
 import pydantic
 
@@ -246,7 +247,10 @@ class SourceNamespace:
         try:
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 node = ast.parse(node.value, mode="eval").body
-            return self.evaluate(node)
+            annotation = self.evaluate(node)
+            if _contains_forward_reference(annotation):
+                raise UnknownExpression("annotation with a forward reference")
+            return annotation
         except (UnknownExpression, SyntaxError, ValueError, RecursionError) as e:
             logger.debug("Failed to evaluate annotation: %s", e)
             return inspect.Parameter.empty
@@ -395,6 +399,22 @@ class SourceNamespace:
             return function(*args, **kwargs)
         except Exception as e:
             raise UnknownExpression(str(e)) from e
+
+
+def _contains_forward_reference(annotation: Any) -> bool:
+    """Whether an annotation holds a string that pydantic would resolve as a
+    forward reference.  Pydantic resolves those with `eval`, so a string the
+    file built, like `X = "open(...)"` in `def f(x: X)`, would run as code."""
+    if isinstance(annotation, (str, typing.ForwardRef)):
+        return True
+    origin = typing.get_origin(annotation)
+    if origin is Literal:
+        return False
+    arguments = typing.get_args(annotation)
+    if origin is Annotated:
+        # Pydantic does not resolve strings in `Annotated` metadata.
+        arguments = arguments[:1]
+    return any(_contains_forward_reference(argument) for argument in arguments)
 
 
 def _is_number(value: Any) -> bool:
