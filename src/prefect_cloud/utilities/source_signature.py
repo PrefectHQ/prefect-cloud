@@ -149,9 +149,10 @@ class SourceNamespace:
                 and len(statement.targets) == 1
                 and isinstance(statement.targets[0], ast.Name)
             ):
-                value = self._try_evaluate(statement.value)
-                if value is not None:
-                    members[statement.targets[0].id] = value
+                try:
+                    members[statement.targets[0].id] = self.evaluate(statement.value)
+                except UnknownExpression:
+                    continue
         mixin = next(
             (
                 base

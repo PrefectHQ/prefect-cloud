@@ -66,6 +66,21 @@ def test_rebuilds_enums_with_their_mixin():
     assert parameter.default == "blue"
 
 
+def test_rebuilds_enums_keeping_members_whose_value_is_none():
+    source_code = (
+        "from enum import Enum\n"
+        "class Status(Enum):\n"
+        "    UNSET = None\n"
+        "    ACTIVE = 'active'\n"
+        "def f(x: Status = Status.UNSET): pass\n"
+    )
+
+    parameter = signature_from_source(source_code, "f").parameters["x"]
+
+    assert [member.value for member in parameter.annotation] == [None, "active"]
+    assert parameter.default is parameter.annotation.UNSET
+
+
 def test_rebuilds_pydantic_models_with_field_defaults():
     source_code = (
         "from pydantic import BaseModel, Field\n"
