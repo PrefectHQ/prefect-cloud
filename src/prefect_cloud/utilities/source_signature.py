@@ -23,7 +23,7 @@ import inspect
 import pathlib
 import uuid
 from logging import Logger, getLogger
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import pydantic
 
@@ -160,7 +160,9 @@ class SourceNamespace:
             ),
             None,
         )
-        return enum_base(node.name, members, type=mixin)
+        # Enum's functional API returns a new class, which type checkers read as
+        # an instance of `enum_base`.
+        return cast(type, enum_base(node.name, members, type=mixin))
 
     def _rebuild_model(
         self, node: ast.ClassDef, model_base: type[pydantic.BaseModel]
