@@ -111,17 +111,59 @@ def test_does_not_resolve_strings_built_by_the_source(annotation: str, marker: P
             "    s: S\n"
             "def f(x=M(s={})): pass\n"
         ),
+        (
+            "import pydantic\n"
+            "class Inner(pydantic.BaseModel):\n"
+            "    env: pydantic.ImportString[dict[str, str]] = pydantic.Field(\n"
+            "        default='os.environ', validate_default=True\n"
+            "    )\n"
+            "class Outer(pydantic.BaseModel):\n"
+            "    inner: Inner = pydantic.Field(default_factory=Inner)\n"
+            "def f(x: Outer = Outer()): pass\n"
+        ),
+        (
+            "from pydantic import BaseModel, Field\n"
+            "from prefect_cloud.settings import Settings\n"
+            "class Inner(BaseModel):\n"
+            "    s: Settings = Field(default={}, validate_default=True)\n"
+            "class Outer(BaseModel):\n"
+            "    i: Inner = Field(default_factory=Inner)\n"
+            "def f(x: Outer = Outer()): pass\n"
+        ),
+        "import pydantic\ndef f(x: str = str(pydantic)): pass",
+        "import pydantic, typing\ndef f(x: typing.Literal[str(pydantic)]): pass",
+        (
+            "import pydantic\n"
+            "def f(x: pydantic.ImportString[dict[str, str]] = pydantic.Field(\n"
+            "    default='os.environ', validate_default=True\n"
+            ")): pass\n"
+        ),
     ],
 )
-def test_defaults_do_not_read_installed_values(
+def test_schema_does_not_include_installed_values(
     source_code: str, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("HOME", "/home/secret")
+    monkeypatch.setenv("PREFECT_CLOUD_DEFAULT_MANAGED_WORK_POOL_NAME", "secret")
+
+    schema = get_parameter_schema_from_content(source_code, "f")
+
+    assert "secret" not in schema.model_dump_json()
+    assert "site-packages" not in schema.model_dump_json()
+
+
+def test_rebuilt_model_errors_are_unknown():
+    source_code = (
+        "import datetime\n"
+        "from pydantic import BaseModel, Field\n"
+        "class M(BaseModel):\n"
+        "    a: datetime.date = Field(default_factory=datetime.date)\n"
+        "def f(x: M = M()): pass\n"
+    )
 
     parameter = signature_from_source(source_code, "f").parameters["x"]
 
-    assert "secret" not in repr(parameter.default)
-    assert "/" not in repr(parameter.default)
+    assert parameter.default is None
 
 
 @pytest.mark.parametrize(

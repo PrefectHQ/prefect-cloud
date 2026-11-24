@@ -349,20 +349,18 @@ class SourceNamespace:
                 for keyword in node.keywords
                 if keyword.arg is not None
             }
-            # A callable argument could be called later, as pydantic calls a
-            # `default_factory`, so it has to be a value constructor too.
             for argument in [*args, *kwargs.values()]:
-                if callable(argument) and not self._is_value_constructor(argument):
-                    raise UnknownExpression(f"callable argument {argument!r}")
+                _check_argument(argument)
             if function in self.rebuilt_classes and issubclass(
                 function, pydantic.BaseModel
             ):
                 # Validating would build the values of installed field types,
-                # like a `BaseSettings` that reads the environment, so the
+                # like a `BaseSettings` that reads the environment or an
+                # `ImportString` that imports any installed object, so the
                 # instance is built from the given values as they are.
                 if args:
                     raise UnknownExpression("positional arguments to a model")
-                return function.model_construct(**kwargs)
+                return self._apply(function.model_construct, **kwargs)
             return _bounded(self._apply(function, *args, **kwargs))
 
         raise UnknownExpression(f"unsupported expression {type(node).__name__}")
@@ -399,6 +397,22 @@ class SourceNamespace:
             return function(*args, **kwargs)
         except Exception as e:
             raise UnknownExpression(str(e)) from e
+
+
+def _check_argument(argument: Any) -> None:
+    """Arguments to value constructors have to be data.
+
+    A callable argument could be called later, as pydantic calls a
+    `default_factory`, so it has to be one of `VALUE_CONSTRUCTORS`.  Rebuilt
+    model classes are not allowed there, because calling one validates its
+    fields.  A module is not allowed either, because `str(module)` includes the
+    path it was installed at."""
+    if isinstance(argument, types.ModuleType):
+        raise UnknownExpression("module as an argument")
+    if callable(argument) and not any(
+        argument is allowed for allowed in VALUE_CONSTRUCTORS
+    ):
+        raise UnknownExpression(f"callable argument {argument!r}")
 
 
 def _contains_forward_reference(annotation: Any) -> bool:
