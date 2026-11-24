@@ -136,6 +136,14 @@ def test_does_not_resolve_strings_built_by_the_source(annotation: str, marker: P
             "def f(x: Outer = Outer()): pass\n"
         ),
         "import pydantic\ndef f(x: str = str(pydantic)): pass",
+        "import pydantic\ndef f(x: str = str([pydantic])): pass",
+        (
+            "import enum, pydantic\n"
+            "class E(str, enum.Enum):\n"
+            "    A = pydantic\n"
+            "    B = (pydantic,)\n"
+            "def f(x: E = E.A): pass\n"
+        ),
         "import pydantic, typing\ndef f(x: typing.Literal[str(pydantic)]): pass",
         (
             "import pydantic\n"

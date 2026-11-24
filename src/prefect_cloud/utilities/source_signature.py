@@ -209,6 +209,9 @@ class SourceNamespace:
             ):
                 try:
                     value = self.evaluate(statement.value)
+                    # A `str` mixin calls `str()` on each value, which would
+                    # put a module's install path in the schema.
+                    _check_structure(value, is_annotation=False)
                 except UnknownExpression:
                     continue
                 members.append((statement.targets[0].id, value))
@@ -441,10 +444,8 @@ def _check_argument(argument: Any) -> None:
     A callable argument could be called later, as pydantic calls a
     `default_factory`, so it has to be one of `VALUE_CONSTRUCTORS`.  Rebuilt
     model classes are not allowed there, because calling one validates its
-    fields.  A module is not allowed either, because `str(module)` includes the
-    path it was installed at."""
-    if isinstance(argument, types.ModuleType):
-        raise UnknownExpression("module as an argument")
+    fields."""
+    _check_structure(argument, is_annotation=False)
     if callable(argument) and not any(
         argument is allowed for allowed in VALUE_CONSTRUCTORS
     ):
@@ -475,6 +476,9 @@ def _check_structure(root: Any, *, is_annotation: bool) -> None:
     `Annotated` metadata, which pydantic does not resolve.  Annotations and
     values are also limited in size and depth.  The walk is iterative and stops
     at the size limit, so a structure that repeats itself cannot slow it down.
+
+    Modules are rejected anywhere, because converting one to a string, as
+    `str()` or a `str` enum mixin does, includes the path it was installed at.
     """
     pending: list[tuple[Any, bool, int]] = [(root, is_annotation, 0)]
     visited = 0
@@ -485,6 +489,8 @@ def _check_structure(root: Any, *, is_annotation: bool) -> None:
             raise UnknownExpression("structure too large")
         if in_annotation and isinstance(value, (str, typing.ForwardRef)):
             raise UnknownExpression("annotation with a forward reference")
+        if isinstance(value, types.ModuleType):
+            raise UnknownExpression("module in a value")
 
         children: list[tuple[Any, bool]] = []
         if isinstance(value, (list, tuple, set, frozenset)):
